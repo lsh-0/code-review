@@ -229,14 +229,24 @@ cmd_test() {
 cmd_setup() {
     echo "Checking system dependencies..."
 
-    if ! pkg-config --exists webkit2gtk-4.0; then
-        echo "Error: webkit2gtk-4.0 not found"
-        echo ""
-        echo "Please install WebKit2GTK:"
-        echo "  sudo apt-get install libwebkit2gtk-4.0-dev"
-        echo ""
-        exit 1
-    fi
+    case "$(uname -s)" in
+        Linux*)
+            if ! pkg-config --exists webkit2gtk-4.0; then
+                echo "Error: webkit2gtk-4.0 not found"
+                echo ""
+                echo "Please install WebKit2GTK:"
+                echo "  sudo apt-get install libwebkit2gtk-4.0-dev"
+                echo ""
+                exit 1
+            fi
+            ;;
+        Darwin*)
+            echo "macOS detected - using native WebKit"
+            ;;
+        *)
+            echo "Warning: Unknown platform, skipping WebKit check"
+            ;;
+    esac
 
     echo "Setting up Go 1.19.13 and GopherJS..."
 
