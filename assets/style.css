@@ -2,6 +2,11 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    scroll-behavior: auto !important;
+}
+
+html {
+    scroll-behavior: auto !important;
 }
 
 body {
@@ -69,6 +74,21 @@ header {
     border-color: #0366d6;
 }
 
+.file-item.has-comments-active {
+    border-color: #28a745;
+    border-width: 2px;
+}
+
+.file-item.has-comments-resolved {
+    border-color: #6f42c1;
+    border-width: 2px;
+}
+
+.file-item.has-comments-ignored {
+    border-color: #6c757d;
+    border-width: 2px;
+}
+
 .file-item .file-name {
     font-family: "Monaco", "Menlo", "Courier New", monospace;
     font-size: 0.85rem;
@@ -134,7 +154,7 @@ header {
 }
 
 .diff-line:hover {
-    background: #f6f8fa;
+    background: #f0f5ff;
 }
 
 .line-numbers {
@@ -150,6 +170,15 @@ header {
     text-align: right;
     color: #9ca3af;
     font-size: 0.8rem;
+}
+
+.line-number.clickable {
+    cursor: pointer;
+}
+
+.line-number.clickable:hover {
+    color: #0366d6;
+    background: #e8f4f8;
 }
 
 .line-content {
