@@ -24,19 +24,13 @@ func GetCurrentBranch(repoPath string) (string, error) {
 }
 
 func GetDefaultBranch(repoPath string) (string, error) {
-	cmd := exec.Command("git", "-C", repoPath, "symbolic-ref", "refs/remotes/origin/HEAD")
-	output, err := cmd.Output()
-	if err != nil {
-		cmd = exec.Command("git", "-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD")
-		output, err = cmd.Output()
-		if err != nil {
-			return "", fmt.Errorf("failed to get default branch: %w", err)
+	for _, branch := range []string{"main", "master"} {
+		cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--verify", branch)
+		if err := cmd.Run(); err == nil {
+			return branch, nil
 		}
 	}
-
-	branch := strings.TrimSpace(string(output))
-	branch = strings.TrimPrefix(branch, "refs/remotes/origin/")
-	return branch, nil
+	return "", fmt.Errorf("could not find main or master branch")
 }
 
 func GetDiff(repoPath, baseBranch, headBranch string) (string, error) {
