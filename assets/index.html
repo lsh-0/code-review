@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Review</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <div class="header-content">
+                <h1>Code Review</h1>
+                <div class="review-info">
+                    <span id="branch-info"></span>
+                </div>
+            </div>
+        </header>
+
+        <div id="main-content">
+            <div id="file-list">
+                <h2>Files Changed</h2>
+                <div id="files"></div>
+            </div>
+
+            <div id="diff-view">
+                <div id="current-file-header">
+                    <h2 id="current-file-name"></h2>
+                </div>
+                <div id="diff-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="comment-modal" class="modal">
+        <div class="modal-content">
+            <h3>Add Comment</h3>
+            <textarea id="comment-input" placeholder="Write your comment in markdown..."></textarea>
+            <div class="modal-actions">
+                <button id="save-comment-btn">Save</button>
+                <button id="cancel-comment-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="edit-comment-modal" class="modal">
+        <div class="modal-content">
+            <h3>Edit Comment</h3>
+            <textarea id="edit-comment-input"></textarea>
+            <div class="modal-actions">
+                <button id="update-comment-btn">Update</button>
+                <button id="cancel-edit-comment-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="review.js"></script>
+</body>
+</html>

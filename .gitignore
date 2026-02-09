@@ -1,0 +1,6 @@
+backend/build/
+dist/
+wailsjs/
+.coverage/
+assets/review.js
+*.log

@@ -1,0 +1,352 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f5f5f5;
+    color: #333;
+}
+
+header {
+    background: #2c3e50;
+    color: white;
+    padding: 1rem 2rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.header-content h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.review-info {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+#main-content {
+    display: flex;
+    height: calc(100vh - 100px);
+}
+
+#file-list {
+    width: 300px;
+    background: white;
+    border-right: 1px solid #ddd;
+    overflow-y: auto;
+    padding: 1rem;
+}
+
+#file-list h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: #555;
+}
+
+.file-item {
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: #f8f9fa;
+    border: 1px solid #e1e4e8;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.file-item:hover {
+    background: #e8f4f8;
+    border-color: #0366d6;
+}
+
+.file-item.active {
+    background: #0366d6;
+    color: white;
+    border-color: #0366d6;
+}
+
+.file-item .file-name {
+    font-family: "Monaco", "Menlo", "Courier New", monospace;
+    font-size: 0.85rem;
+}
+
+.file-item .comment-count {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.1rem 0.4rem;
+    background: #6f42c1;
+    color: white;
+    border-radius: 10px;
+    font-size: 0.75rem;
+}
+
+#diff-view {
+    flex: 1;
+    overflow-y: auto;
+    background: white;
+}
+
+#current-file-header {
+    padding: 1rem 2rem;
+    background: #fafbfc;
+    border-bottom: 1px solid #e1e4e8;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+#current-file-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    font-family: "Monaco", "Menlo", "Courier New", monospace;
+}
+
+#diff-content {
+    padding: 1rem 2rem;
+}
+
+.diff-hunk {
+    margin-bottom: 2rem;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.hunk-header {
+    background: #f6f8fa;
+    padding: 0.5rem 1rem;
+    font-family: "Monaco", "Menlo", "Courier New", monospace;
+    font-size: 0.85rem;
+    color: #586069;
+    border-bottom: 1px solid #e1e4e8;
+}
+
+.diff-line {
+    display: flex;
+    font-family: "Monaco", "Menlo", "Courier New", monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    position: relative;
+}
+
+.diff-line:hover {
+    background: #f6f8fa;
+}
+
+.line-numbers {
+    display: flex;
+    user-select: none;
+    background: #fafbfc;
+    border-right: 1px solid #e1e4e8;
+}
+
+.line-number {
+    width: 50px;
+    padding: 0.25rem 0.5rem;
+    text-align: right;
+    color: #9ca3af;
+    font-size: 0.8rem;
+}
+
+.line-content {
+    flex: 1;
+    padding: 0.25rem 0.5rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.line-actions {
+    padding: 0.25rem 0.5rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.diff-line:hover .line-actions {
+    opacity: 1;
+}
+
+.comment-btn {
+    padding: 0.2rem 0.5rem;
+    background: #0366d6;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.75rem;
+}
+
+.comment-btn:hover {
+    background: #0256c7;
+}
+
+.diff-line.added {
+    background: #e6ffed;
+}
+
+.diff-line.added .line-content {
+    background: #d1f4da;
+}
+
+.diff-line.removed {
+    background: #ffebe9;
+}
+
+.diff-line.removed .line-content {
+    background: #ffd8d6;
+}
+
+.comment-thread {
+    background: #f6f8fa;
+    border-left: 3px solid #6f42c1;
+    margin: 0.5rem 0;
+    padding: 0.75rem 1rem;
+}
+
+.comment {
+    background: white;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.comment:last-child {
+    margin-bottom: 0;
+}
+
+.comment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.comment-status {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.comment-status.active {
+    background: #28a745;
+    color: white;
+}
+
+.comment-status.resolved {
+    background: #6f42c1;
+    color: white;
+}
+
+.comment-status.ignored {
+    background: #6c757d;
+    color: white;
+}
+
+.comment-content {
+    margin-bottom: 0.5rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.comment-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.comment-actions button {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid #d1d5da;
+    background: white;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.comment-actions button:hover {
+    background: #f3f4f6;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 600px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.modal-content h3 {
+    margin-bottom: 1rem;
+    font-size: 1.2rem;
+}
+
+.modal-content textarea {
+    width: 100%;
+    min-height: 150px;
+    padding: 0.75rem;
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    resize: vertical;
+    margin-bottom: 1rem;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+.modal-actions button {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+#save-comment-btn,
+#update-comment-btn {
+    background: #28a745;
+    color: white;
+}
+
+#save-comment-btn:hover,
+#update-comment-btn:hover {
+    background: #218838;
+}
+
+#cancel-comment-btn,
+#cancel-edit-comment-btn {
+    background: #6c757d;
+    color: white;
+}
+
+#cancel-comment-btn:hover,
+#cancel-edit-comment-btn:hover {
+    background: #5a6268;
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "code-review",
+  "outputfilename": "code-review",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "",
+  "author": {
+    "name": "",
+    "email": ""
+  },
+  "info": {
+    "companyName": "",
+    "productName": "Code Review",
+    "productVersion": "1.0.0",
+    "copyright": "",
+    "comments": "A desktop-first code review tool"
+  },
+  "nsisType": "single",
+  "assetdir": "../assets",
+  "build:dir": "./build",
+  "reloaddirs": ""
+}
