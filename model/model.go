@@ -14,10 +14,13 @@ const (
 )
 
 type Comment struct {
-	ID         string        `json:"id"`
-	Content    string        `json:"content"`
-	LineNumber int           `json:"line_number"`
-	Status     CommentStatus `json:"status"`
+	ID            string        `json:"id"`
+	Content       string        `json:"content"`
+	LineNumber    int           `json:"line_number"`
+	Status        CommentStatus `json:"status"`
+	ContextBefore string        `json:"context_before"`
+	ContextLine   string        `json:"context_line"`
+	ContextAfter  string        `json:"context_after"`
 }
 
 type FileDiff struct {
@@ -48,6 +51,18 @@ func NewComment(content string, lineNumber int) *Comment {
 	}
 }
 
+func NewCommentWithContext(content string, lineNumber int, contextBefore string, contextLine string, contextAfter string) *Comment {
+	return &Comment{
+		ID:            GenerateID(),
+		Content:       content,
+		LineNumber:    lineNumber,
+		Status:        CommentStatusActive,
+		ContextBefore: contextBefore,
+		ContextLine:   contextLine,
+		ContextAfter:  contextAfter,
+	}
+}
+
 func (c *Comment) Resolve() {
 	c.Status = CommentStatusResolved
 }
@@ -73,6 +88,12 @@ func NewFileDiff(filePath string) *FileDiff {
 
 func (f *FileDiff) AddComment(content string, lineNumber int) *Comment {
 	comment := NewComment(content, lineNumber)
+	f.Comments = append(f.Comments, comment)
+	return comment
+}
+
+func (f *FileDiff) AddCommentWithContext(content string, lineNumber int, contextBefore string, contextLine string, contextAfter string) *Comment {
+	comment := NewCommentWithContext(content, lineNumber, contextBefore, contextLine, contextAfter)
 	f.Comments = append(f.Comments, comment)
 	return comment
 }

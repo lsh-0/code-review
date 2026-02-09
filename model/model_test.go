@@ -248,3 +248,56 @@ func TestGenerateID(t *testing.T) {
 		t.Errorf("Expected ID length 16, got %d", len(id1))
 	}
 }
+
+func TestNewCommentWithContext(t *testing.T) {
+	contextBefore := "line before"
+	contextLine := "target line"
+	contextAfter := "line after"
+
+	comment := NewCommentWithContext("test comment", 10, contextBefore, contextLine, contextAfter)
+
+	if comment.ID == "" {
+		t.Error("Expected comment to have an ID")
+	}
+
+	if comment.Content != "test comment" {
+		t.Errorf("Expected content 'test comment', got '%s'", comment.Content)
+	}
+
+	if comment.LineNumber != 10 {
+		t.Errorf("Expected line number 10, got %d", comment.LineNumber)
+	}
+
+	if comment.Status != CommentStatusActive {
+		t.Errorf("Expected status Active, got %s", comment.Status)
+	}
+
+	if comment.ContextBefore != contextBefore {
+		t.Errorf("Expected context before '%s', got '%s'", contextBefore, comment.ContextBefore)
+	}
+
+	if comment.ContextLine != contextLine {
+		t.Errorf("Expected context line '%s', got '%s'", contextLine, comment.ContextLine)
+	}
+
+	if comment.ContextAfter != contextAfter {
+		t.Errorf("Expected context after '%s', got '%s'", contextAfter, comment.ContextAfter)
+	}
+}
+
+func TestFileDiffAddCommentWithContext(t *testing.T) {
+	diff := NewFileDiff("file.go")
+	comment := diff.AddCommentWithContext("test comment", 5, "before", "target", "after")
+
+	if len(diff.Comments) != 1 {
+		t.Fatalf("Expected 1 comment, got %d", len(diff.Comments))
+	}
+
+	if diff.Comments[0] != comment {
+		t.Error("Expected added comment to be in comments list")
+	}
+
+	if diff.Comments[0].ContextLine != "target" {
+		t.Errorf("Expected context line 'target', got '%s'", diff.Comments[0].ContextLine)
+	}
+}

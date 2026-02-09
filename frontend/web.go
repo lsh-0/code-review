@@ -72,6 +72,24 @@ func loadReviewInfo() {
 	}))
 }
 
+func loadAllComments(callback func()) {
+	remaining := len(diffFiles)
+	if remaining == 0 {
+		callback()
+		return
+	}
+
+	for _, file := range diffFiles {
+		filePath := file.Path
+		loadComments(filePath, func() {
+			remaining--
+			if remaining == 0 {
+				callback()
+			}
+		})
+	}
+}
+
 func loadDiffFiles() {
 	backend := win.Get("go")
 	if backend == js.Undefined {
@@ -88,10 +106,47 @@ func loadDiffFiles() {
 		if len(args) > 0 && args[0] != js.Undefined {
 			filesJSON := args[0].String()
 			json.Unmarshal([]byte(filesJSON), &diffFiles)
-			renderFileList()
+			loadAllComments(func() {
+				renderFileList()
+			})
 		}
 		return nil
 	}))
+}
+
+func getFileCommentStatus(filePath string) string {
+	comments, ok := commentsCache[filePath]
+	if !ok || len(comments) == 0 {
+		return "none"
+	}
+
+	hasActive := false
+	hasIgnored := false
+	allResolved := true
+
+	for _, comment := range comments {
+		if comment.Status == model.CommentStatusActive {
+			hasActive = true
+			allResolved = false
+		} else if comment.Status == model.CommentStatusIgnored {
+			hasIgnored = true
+			allResolved = false
+		} else if comment.Status == model.CommentStatusResolved {
+			continue
+		}
+	}
+
+	if hasActive {
+		return "active"
+	}
+	if allResolved && len(comments) > 0 {
+		return "resolved"
+	}
+	if hasIgnored {
+		return "ignored"
+	}
+
+	return "none"
 }
 
 func renderFileList() {
@@ -101,6 +156,11 @@ func renderFileList() {
 	for _, file := range diffFiles {
 		fileItem := doc.Call("createElement", "div")
 		fileItem.Get("classList").Call("add", "file-item")
+
+		status := getFileCommentStatus(file.Path)
+		if status != "none" {
+			fileItem.Get("classList").Call("add", "has-comments-"+status)
+		}
 
 		fileName := doc.Call("createElement", "div")
 		fileName.Get("classList").Call("add", "file-name")
@@ -243,6 +303,12 @@ func createDiffLine(line DiffLine, filePath string) *js.Object {
 	newNum.Get("classList").Call("add", "line-number")
 	if line.NewLineNo > 0 {
 		newNum.Set("textContent", fmt.Sprintf("%d", line.NewLineNo))
+		newNum.Get("classList").Call("add", "clickable")
+		lineNo := line.NewLineNo
+		newNum.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			showCommentModal(filePath, lineNo)
+			return nil
+		}))
 	}
 	numbers.Call("appendChild", newNum)
 
@@ -252,24 +318,6 @@ func createDiffLine(line DiffLine, filePath string) *js.Object {
 	content.Get("classList").Call("add", "line-content")
 	content.Set("textContent", line.Content)
 	lineElem.Call("appendChild", content)
-
-	if line.NewLineNo > 0 {
-		actions := doc.Call("createElement", "div")
-		actions.Get("classList").Call("add", "line-actions")
-
-		commentBtn := doc.Call("createElement", "button")
-		commentBtn.Get("classList").Call("add", "comment-btn")
-		commentBtn.Set("textContent", "Comment")
-
-		lineNo := line.NewLineNo
-		commentBtn.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-			showCommentModal(filePath, lineNo)
-			return nil
-		}))
-
-		actions.Call("appendChild", commentBtn)
-		lineElem.Call("appendChild", actions)
-	}
 
 	return lineElem
 }
@@ -389,6 +437,42 @@ func hideCommentModal() {
 	modal.Get("classList").Call("remove", "active")
 }
 
+func getLineContext(filePath string, lineNumber int) (string, string, string) {
+	var file *DiffFile
+	for i := range diffFiles {
+		if diffFiles[i].Path == filePath {
+			file = &diffFiles[i]
+			break
+		}
+	}
+
+	if file == nil {
+		return "", "", ""
+	}
+
+	for _, hunk := range file.Hunks {
+		for i, line := range hunk.Lines {
+			if line.NewLineNo == lineNumber {
+				contextLine := line.Content
+				contextBefore := ""
+				contextAfter := ""
+
+				if i > 0 {
+					contextBefore = hunk.Lines[i-1].Content
+				}
+
+				if i < len(hunk.Lines)-1 {
+					contextAfter = hunk.Lines[i+1].Content
+				}
+
+				return contextBefore, contextLine, contextAfter
+			}
+		}
+	}
+
+	return "", "", ""
+}
+
 func saveComment() {
 	input := doc.Call("getElementById", "comment-input")
 	content := input.Get("value").String()
@@ -396,6 +480,8 @@ func saveComment() {
 	if content == "" {
 		return
 	}
+
+	contextBefore, contextLine, contextAfter := getLineContext(currentFile, currentLineNumber)
 
 	backend := win.Get("go")
 	if backend == js.Undefined {
@@ -407,7 +493,7 @@ func saveComment() {
 		return
 	}
 
-	promise := app.Call("AddComment", currentFile, content, currentLineNumber)
+	promise := app.Call("AddComment", currentFile, content, currentLineNumber, contextBefore, contextLine, contextAfter)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		hideCommentModal()
 		loadComments(currentFile, func() {
@@ -542,6 +628,23 @@ func deleteComment(filePath string, commentID string) {
 }
 
 func setupEventHandlers() {
+	doc.Call("addEventListener", "keydown", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		event := args[0]
+		key := event.Get("key").String()
+		if key == "Escape" || key == "Esc" {
+			commentModal := doc.Call("getElementById", "comment-modal")
+			editModal := doc.Call("getElementById", "edit-comment-modal")
+
+			if commentModal.Get("classList").Call("contains", "active").Bool() {
+				hideCommentModal()
+			}
+			if editModal.Get("classList").Call("contains", "active").Bool() {
+				hideEditCommentModal()
+			}
+		}
+		return nil
+	}))
+
 	doc.Call("getElementById", "save-comment-btn").Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		saveComment()
 		return nil
@@ -585,6 +688,34 @@ func setupEventHandlers() {
 			}))
 		}
 	}
+
+	doc.Call("addEventListener", "wheel", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		event := args[0]
+		target := event.Get("target")
+		deltaY := event.Get("deltaY").Float()
+
+		current := target
+		var scrollableElement *js.Object
+		for current != js.Undefined && current != nil {
+			overflowY := win.Call("getComputedStyle", current).Call("getPropertyValue", "overflow-y").String()
+			if overflowY == "auto" || overflowY == "scroll" {
+				scrollHeight := current.Get("scrollHeight").Int()
+				clientHeight := current.Get("clientHeight").Int()
+				if scrollHeight > clientHeight {
+					scrollableElement = current
+					break
+				}
+			}
+			current = current.Get("parentElement")
+		}
+
+		if scrollableElement != nil {
+			event.Call("preventDefault")
+			scrollableElement.Call("scrollBy", 0, deltaY)
+		}
+
+		return nil
+	}), map[string]interface{}{"passive": false})
 }
 
 func initialize() {

@@ -4,6 +4,7 @@ import (
 	"code-review/model"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -107,8 +108,10 @@ func TestGetReviewStatePath(t *testing.T) {
 	tmpDir := t.TempDir()
 	dataDir := filepath.Join(tmpDir, "data")
 	repoPath := "/path/to/my-project"
+	sourceBranch := "feature-branch"
+	targetBranch := "main"
 
-	statePath := GetReviewStatePath(dataDir, repoPath)
+	statePath := GetReviewStatePath(dataDir, repoPath, sourceBranch, targetBranch)
 
 	if !filepath.IsAbs(statePath) {
 		t.Error("Expected absolute path")
@@ -126,5 +129,34 @@ func TestGetReviewStatePath(t *testing.T) {
 
 	if filepath.Ext(filename) != ".json" {
 		t.Errorf("Expected .json extension, got %s", filepath.Ext(filename))
+	}
+
+	if !strings.Contains(filename, "feature-branch") {
+		t.Error("Expected filename to contain source branch")
+	}
+
+	if !strings.Contains(filename, "main") {
+		t.Error("Expected filename to contain target branch")
+	}
+}
+
+func TestGetReviewStatePathDifferentBranches(t *testing.T) {
+	dataDir := t.TempDir()
+	repoPath := "/path/to/repo"
+
+	path1 := GetReviewStatePath(dataDir, repoPath, "feature-1", "main")
+	path2 := GetReviewStatePath(dataDir, repoPath, "feature-2", "main")
+	path3 := GetReviewStatePath(dataDir, repoPath, "feature-1", "develop")
+
+	if path1 == path2 {
+		t.Error("Expected different paths for different source branches")
+	}
+
+	if path1 == path3 {
+		t.Error("Expected different paths for different target branches")
+	}
+
+	if path2 == path3 {
+		t.Error("Expected different paths for different branch combinations")
 	}
 }

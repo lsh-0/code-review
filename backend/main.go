@@ -55,8 +55,6 @@ func (a *App) startup(ctx context.Context) error {
 		return fmt.Errorf("failed to create data directory %s: %w", a.dataDir, err)
 	}
 
-	a.statePath = GetReviewStatePath(a.dataDir, a.repoPath)
-
 	currentBranch, err := GetCurrentBranch(a.repoPath)
 	if err != nil {
 		return fmt.Errorf("failed to get current branch: %w", err)
@@ -66,6 +64,8 @@ func (a *App) startup(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get default branch: %w", err)
 	}
+
+	a.statePath = GetReviewStatePath(a.dataDir, a.repoPath, currentBranch, defaultBranch)
 
 	if _, err := os.Stat(a.statePath); err == nil {
 		a.review, err = LoadReview(a.statePath)
@@ -137,13 +137,13 @@ func (a *App) GetComments(filePath string) (string, error) {
 	return string(data), nil
 }
 
-func (a *App) AddComment(filePath string, content string, lineNumber int) error {
+func (a *App) AddComment(filePath string, content string, lineNumber int, contextBefore string, contextLine string, contextAfter string) error {
 	fileDiff := a.review.GetFileDiff(filePath)
 	if fileDiff == nil {
 		fileDiff = a.review.AddFileDiff(filePath)
 	}
 
-	fileDiff.AddComment(content, lineNumber)
+	fileDiff.AddCommentWithContext(content, lineNumber, contextBefore, contextLine, contextAfter)
 
 	return SaveReview(a.statePath, a.review)
 }
