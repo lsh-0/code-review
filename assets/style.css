@@ -316,6 +316,18 @@ header {
     background: #f3f4f6;
 }
 
+.comment-actions .delete-btn {
+    margin-left: auto;
+    background: #dc3545;
+    color: white;
+    border-color: #dc3545;
+}
+
+.comment-actions .delete-btn:hover {
+    background: #c82333;
+    border-color: #c82333;
+}
+
 .modal {
     display: none;
     position: fixed;

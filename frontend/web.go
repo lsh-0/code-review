@@ -428,6 +428,7 @@ func createCommentElement(filePath string, comment *model.Comment) *js.Object {
 	}
 
 	deleteBtn := doc.Call("createElement", "button")
+	deleteBtn.Get("classList").Call("add", "delete-btn")
 	deleteBtn.Set("textContent", "Delete")
 	deleteBtn.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		deleteComment(filePath, commentID)
