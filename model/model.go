@@ -15,6 +15,7 @@ const (
 
 type Comment struct {
 	ID            string        `json:"id"`
+	Author        string        `json:"author"`
 	Content       string        `json:"content"`
 	LineNumber    int           `json:"line_number"`
 	Status        CommentStatus `json:"status"`
@@ -42,18 +43,20 @@ func GenerateID() string {
 	return hex.EncodeToString(bytes)
 }
 
-func NewComment(content string, lineNumber int) *Comment {
+func NewComment(content string, lineNumber int, author string) *Comment {
 	return &Comment{
 		ID:         GenerateID(),
+		Author:     author,
 		Content:    content,
 		LineNumber: lineNumber,
 		Status:     CommentStatusActive,
 	}
 }
 
-func NewCommentWithContext(content string, lineNumber int, contextBefore string, contextLine string, contextAfter string) *Comment {
+func NewCommentWithContext(content string, lineNumber int, author string, contextBefore string, contextLine string, contextAfter string) *Comment {
 	return &Comment{
 		ID:            GenerateID(),
+		Author:        author,
 		Content:       content,
 		LineNumber:    lineNumber,
 		Status:        CommentStatusActive,
@@ -86,14 +89,14 @@ func NewFileDiff(filePath string) *FileDiff {
 	}
 }
 
-func (f *FileDiff) AddComment(content string, lineNumber int) *Comment {
-	comment := NewComment(content, lineNumber)
+func (f *FileDiff) AddComment(content string, lineNumber int, author string) *Comment {
+	comment := NewComment(content, lineNumber, author)
 	f.Comments = append(f.Comments, comment)
 	return comment
 }
 
-func (f *FileDiff) AddCommentWithContext(content string, lineNumber int, contextBefore string, contextLine string, contextAfter string) *Comment {
-	comment := NewCommentWithContext(content, lineNumber, contextBefore, contextLine, contextAfter)
+func (f *FileDiff) AddCommentWithContext(content string, lineNumber int, author string, contextBefore string, contextLine string, contextAfter string) *Comment {
+	comment := NewCommentWithContext(content, lineNumber, author, contextBefore, contextLine, contextAfter)
 	f.Comments = append(f.Comments, comment)
 	return comment
 }

@@ -225,6 +225,26 @@ func TestGetDiffInvalidRepo(t *testing.T) {
 	}
 }
 
+func TestGetUserName(t *testing.T) {
+	tmpDir := setupTestRepo(t)
+
+	userName, err := GetUserName(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to get user name: %v", err)
+	}
+
+	if userName != "Test User" {
+		t.Errorf("Expected user name 'Test User', got %s", userName)
+	}
+}
+
+func TestGetUserNameInvalidRepo(t *testing.T) {
+	_, err := GetUserName("/nonexistent")
+	if err == nil {
+		t.Error("Expected error for nonexistent repo")
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 && s != "" && substr != "" &&
 		(s == substr || len(s) >= len(substr) && s[:len(substr)] == substr ||

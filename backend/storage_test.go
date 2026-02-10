@@ -14,8 +14,8 @@ func TestSaveAndLoadReview(t *testing.T) {
 
 	review := model.NewReview("/repo/path", "feature", "main")
 	diff := review.AddFileDiff("test.go")
-	diff.AddComment("This needs refactoring", 10)
-	diff.AddComment("Add error handling here", 25)
+	diff.AddComment("This needs refactoring", 10, "Test User")
+	diff.AddComment("Add error handling here", 25, "Test User")
 
 	err := SaveReview(statePath, review)
 	if err != nil {

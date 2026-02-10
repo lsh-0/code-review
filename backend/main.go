@@ -23,6 +23,7 @@ type App struct {
 	ctx        context.Context
 	review     *model.Review
 	repoPath   string
+	userName   string
 	dataDir    string
 	statePath  string
 	diffFiles  []DiffFile
@@ -43,6 +44,11 @@ func (a *App) startup(ctx context.Context) error {
 	a.repoPath, err = GetGitRoot(cwd)
 	if err != nil {
 		return fmt.Errorf("repository not found: %w", err)
+	}
+
+	a.userName, err = GetUserName(a.repoPath)
+	if err != nil {
+		return fmt.Errorf("failed to get git user name: %w", err)
 	}
 
 	a.dataDir = GetXDGDataDir()
@@ -95,12 +101,14 @@ func (a *App) GetReviewInfo() (string, error) {
 		RepoPath     string `json:"repo_path"`
 		SourceBranch string `json:"source_branch"`
 		TargetBranch string `json:"target_branch"`
+		CurrentUser  string `json:"current_user"`
 	}
 
 	info := ReviewInfo{
 		RepoPath:     a.review.RepoPath,
 		SourceBranch: a.review.SourceBranch,
 		TargetBranch: a.review.TargetBranch,
+		CurrentUser:  a.userName,
 	}
 
 	data, err := json.Marshal(info)
@@ -138,7 +146,7 @@ func (a *App) AddComment(filePath string, content string, lineNumber int, contex
 		fileDiff = a.review.AddFileDiff(filePath)
 	}
 
-	fileDiff.AddCommentWithContext(content, lineNumber, contextBefore, contextLine, contextAfter)
+	fileDiff.AddCommentWithContext(content, lineNumber, a.userName, contextBefore, contextLine, contextAfter)
 
 	return SaveReview(a.statePath, a.review)
 }

@@ -286,6 +286,12 @@ header {
     color: white;
 }
 
+.comment-author {
+    font-size: 0.75rem;
+    color: #6c757d;
+    font-weight: normal;
+}
+
 .comment-content {
     margin-bottom: 0.5rem;
     line-height: 1.5;

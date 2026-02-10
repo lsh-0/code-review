@@ -17,6 +17,7 @@ var (
 	currentFile        string
 	currentLineNumber  int
 	currentCommentID   string
+	currentUser        string
 	diffFiles          []DiffFile
 	commentsCache      map[string][]*model.Comment
 )
@@ -64,6 +65,8 @@ func loadReviewInfo() {
 			infoJSON := args[0].String()
 			var info map[string]string
 			json.Unmarshal([]byte(infoJSON), &info)
+
+			currentUser = info["current_user"]
 
 			branchInfo := doc.Call("getElementById", "branch-info")
 			branchInfo.Set("textContent", info["source_branch"]+" → "+info["target_branch"])
@@ -370,6 +373,13 @@ func createCommentElement(filePath string, comment *model.Comment) *js.Object {
 	status.Get("classList").Call("add", string(comment.Status))
 	status.Set("textContent", string(comment.Status))
 	header.Call("appendChild", status)
+
+	if comment.Author != "" && comment.Author != currentUser {
+		author := doc.Call("createElement", "span")
+		author.Get("classList").Call("add", "comment-author")
+		author.Set("textContent", " ("+comment.Author+")")
+		header.Call("appendChild", author)
+	}
 
 	elem.Call("appendChild", header)
 

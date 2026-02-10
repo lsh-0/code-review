@@ -5,10 +5,14 @@ import (
 )
 
 func TestNewComment(t *testing.T) {
-	comment := NewComment("This is a test comment", 10)
+	comment := NewComment("This is a test comment", 10, "Test Author")
 
 	if comment.ID == "" {
 		t.Error("Expected comment to have an ID")
+	}
+
+	if comment.Author != "Test Author" {
+		t.Errorf("Expected author 'Test Author', got '%s'", comment.Author)
 	}
 
 	if comment.Content != "This is a test comment" {
@@ -25,7 +29,7 @@ func TestNewComment(t *testing.T) {
 }
 
 func TestCommentResolve(t *testing.T) {
-	comment := NewComment("test", 1)
+	comment := NewComment("test", 1, "Test User")
 	comment.Resolve()
 
 	if comment.Status != CommentStatusResolved {
@@ -34,7 +38,7 @@ func TestCommentResolve(t *testing.T) {
 }
 
 func TestCommentIgnore(t *testing.T) {
-	comment := NewComment("test", 1)
+	comment := NewComment("test", 1, "Test User")
 	comment.Ignore()
 
 	if comment.Status != CommentStatusIgnored {
@@ -43,7 +47,7 @@ func TestCommentIgnore(t *testing.T) {
 }
 
 func TestCommentReactivate(t *testing.T) {
-	comment := NewComment("test", 1)
+	comment := NewComment("test", 1, "Test User")
 	comment.Resolve()
 	comment.Reactivate()
 
@@ -53,7 +57,7 @@ func TestCommentReactivate(t *testing.T) {
 }
 
 func TestCommentUpdate(t *testing.T) {
-	comment := NewComment("original", 1)
+	comment := NewComment("original", 1, "Test User")
 	comment.UpdateContent("updated content")
 
 	if comment.Content != "updated content" {
@@ -75,7 +79,7 @@ func TestNewFileDiff(t *testing.T) {
 
 func TestFileDiffAddComment(t *testing.T) {
 	diff := NewFileDiff("file.go")
-	comment := diff.AddComment("test comment", 5)
+	comment := diff.AddComment("test comment", 5, "Test User")
 
 	if len(diff.Comments) != 1 {
 		t.Fatalf("Expected 1 comment, got %d", len(diff.Comments))
@@ -88,7 +92,7 @@ func TestFileDiffAddComment(t *testing.T) {
 
 func TestFileDiffGetComment(t *testing.T) {
 	diff := NewFileDiff("file.go")
-	comment := diff.AddComment("test", 5)
+	comment := diff.AddComment("test", 5, "Test User")
 
 	found := diff.GetComment(comment.ID)
 	if found == nil {
@@ -107,8 +111,8 @@ func TestFileDiffGetComment(t *testing.T) {
 
 func TestFileDiffDeleteComment(t *testing.T) {
 	diff := NewFileDiff("file.go")
-	comment1 := diff.AddComment("comment1", 5)
-	comment2 := diff.AddComment("comment2", 10)
+	comment1 := diff.AddComment("comment1", 5, "Test User")
+	comment2 := diff.AddComment("comment2", 10, "Test User")
 
 	diff.DeleteComment(comment1.ID)
 
@@ -123,9 +127,9 @@ func TestFileDiffDeleteComment(t *testing.T) {
 
 func TestFileDiffGetCommentsByLine(t *testing.T) {
 	diff := NewFileDiff("file.go")
-	diff.AddComment("comment1", 5)
-	diff.AddComment("comment2", 5)
-	diff.AddComment("comment3", 10)
+	diff.AddComment("comment1", 5, "Test User")
+	diff.AddComment("comment2", 5, "Test User")
+	diff.AddComment("comment3", 10, "Test User")
 
 	line5Comments := diff.GetCommentsByLine(5)
 	if len(line5Comments) != 2 {
@@ -203,11 +207,11 @@ func TestReviewGetAllComments(t *testing.T) {
 	review := NewReview("/repo", "branch", "main")
 
 	diff1 := review.AddFileDiff("file1.go")
-	diff1.AddComment("comment1", 5)
-	diff1.AddComment("comment2", 10)
+	diff1.AddComment("comment1", 5, "Test User")
+	diff1.AddComment("comment2", 10, "Test User")
 
 	diff2 := review.AddFileDiff("file2.go")
-	diff2.AddComment("comment3", 3)
+	diff2.AddComment("comment3", 3, "Test User")
 
 	allComments := review.GetAllComments()
 	if len(allComments) != 3 {
@@ -219,9 +223,9 @@ func TestReviewGetActiveCommentsCount(t *testing.T) {
 	review := NewReview("/repo", "branch", "main")
 
 	diff := review.AddFileDiff("file.go")
-	comment1 := diff.AddComment("comment1", 5)
-	comment2 := diff.AddComment("comment2", 10)
-	diff.AddComment("comment3", 15)
+	comment1 := diff.AddComment("comment1", 5, "Test User")
+	comment2 := diff.AddComment("comment2", 10, "Test User")
+	diff.AddComment("comment3", 15, "Test User")
 
 	comment1.Resolve()
 	comment2.Ignore()
@@ -254,7 +258,7 @@ func TestNewCommentWithContext(t *testing.T) {
 	contextLine := "target line"
 	contextAfter := "line after"
 
-	comment := NewCommentWithContext("test comment", 10, contextBefore, contextLine, contextAfter)
+	comment := NewCommentWithContext("test comment", 10, "Test Author", contextBefore, contextLine, contextAfter)
 
 	if comment.ID == "" {
 		t.Error("Expected comment to have an ID")
@@ -287,7 +291,7 @@ func TestNewCommentWithContext(t *testing.T) {
 
 func TestFileDiffAddCommentWithContext(t *testing.T) {
 	diff := NewFileDiff("file.go")
-	comment := diff.AddCommentWithContext("test comment", 5, "before", "target", "after")
+	comment := diff.AddCommentWithContext("test comment", 5, "Test User", "before", "target", "after")
 
 	if len(diff.Comments) != 1 {
 		t.Fatalf("Expected 1 comment, got %d", len(diff.Comments))

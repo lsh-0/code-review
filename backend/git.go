@@ -50,3 +50,12 @@ func GetDiff(repoPath, baseBranch, headBranch string) (string, error) {
 	}
 	return string(output), nil
 }
+
+func GetUserName(repoPath string) (string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "config", "user.name")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get user name: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
