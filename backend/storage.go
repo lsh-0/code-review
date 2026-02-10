@@ -51,16 +51,17 @@ func GetXDGDataDir() string {
 }
 
 func GetReviewStatePath(dataDir string, repoPath string, sourceBranch string, targetBranch string) string {
-	cleanPath := filepath.Clean(repoPath)
-	cleanPath = strings.ReplaceAll(cleanPath, string(filepath.Separator), "_")
+	cleanRepoPath := strings.TrimPrefix(filepath.Clean(repoPath), string(filepath.Separator))
+	cleanRepoPath = strings.ReplaceAll(cleanRepoPath, string(filepath.Separator), "--")
 
-	cleanSource := strings.ReplaceAll(sourceBranch, "/", "_")
-	cleanTarget := strings.ReplaceAll(targetBranch, "/", "_")
+	cleanSource := strings.ReplaceAll(sourceBranch, "/", "--")
+	cleanTarget := strings.ReplaceAll(targetBranch, "/", "--")
 
-	hash := sha256.Sum256([]byte(repoPath))
+	combinedInput := fmt.Sprintf("%s:%s:%s", repoPath, sourceBranch, targetBranch)
+	hash := sha256.Sum256([]byte(combinedInput))
 	hashStr := hex.EncodeToString(hash[:8])
 
-	filename := fmt.Sprintf("%s_%s_%s_%s.json", cleanPath, cleanSource, cleanTarget, hashStr)
+	filename := fmt.Sprintf("%s__%s__%s__%s.json", cleanRepoPath, cleanSource, cleanTarget, hashStr)
 
 	return filepath.Join(dataDir, filename)
 }

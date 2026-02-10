@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -41,13 +40,9 @@ func (a *App) startup(ctx context.Context) error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	if !IsGitRepo(cwd) {
-		return fmt.Errorf("not a git repository: %s", cwd)
-	}
-
-	a.repoPath, err = filepath.Abs(cwd)
+	a.repoPath, err = GetGitRoot(cwd)
 	if err != nil {
-		return fmt.Errorf("failed to get absolute path: %w", err)
+		return fmt.Errorf("repository not found: %w", err)
 	}
 
 	a.dataDir = GetXDGDataDir()

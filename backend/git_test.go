@@ -49,6 +49,53 @@ func setupTestRepo(t *testing.T) string {
 	return tmpDir
 }
 
+func TestGetGitRoot(t *testing.T) {
+	t.Run("valid git repo", func(t *testing.T) {
+		tmpDir := setupTestRepo(t)
+
+		root, err := GetGitRoot(tmpDir)
+		if err != nil {
+			t.Errorf("Expected to get git root, got error: %v", err)
+		}
+
+		if root != tmpDir {
+			t.Errorf("Expected git root to be %s, got %s", tmpDir, root)
+		}
+	})
+
+	t.Run("subdirectory of git repo", func(t *testing.T) {
+		tmpDir := setupTestRepo(t)
+		subDir := filepath.Join(tmpDir, "subdir")
+		if err := os.Mkdir(subDir, 0755); err != nil {
+			t.Fatalf("Failed to create subdirectory: %v", err)
+		}
+
+		root, err := GetGitRoot(subDir)
+		if err != nil {
+			t.Errorf("Expected to get git root from subdirectory, got error: %v", err)
+		}
+
+		if root != tmpDir {
+			t.Errorf("Expected git root to be %s, got %s", tmpDir, root)
+		}
+	})
+
+	t.Run("not a git repo", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_, err := GetGitRoot(tmpDir)
+		if err == nil {
+			t.Error("Expected error for non-git directory")
+		}
+	})
+
+	t.Run("nonexistent directory", func(t *testing.T) {
+		_, err := GetGitRoot("/nonexistent/path")
+		if err == nil {
+			t.Error("Expected error for nonexistent directory")
+		}
+	})
+}
+
 func TestIsGitRepo(t *testing.T) {
 	t.Run("valid git repo", func(t *testing.T) {
 		tmpDir := setupTestRepo(t)

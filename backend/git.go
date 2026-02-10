@@ -6,12 +6,18 @@ import (
 	"strings"
 )
 
-func IsGitRepo(path string) bool {
-	cmd := exec.Command("git", "-C", path, "rev-parse", "--git-dir")
-	if err := cmd.Run(); err != nil {
-		return false
+func GetGitRoot(path string) (string, error) {
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--show-toplevel")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("not a git repository")
 	}
-	return true
+	return strings.TrimSpace(string(output)), nil
+}
+
+func IsGitRepo(path string) bool {
+	_, err := GetGitRoot(path)
+	return err == nil
 }
 
 func GetCurrentBranch(repoPath string) (string, error) {
