@@ -153,6 +153,11 @@ func renderFileList() {
 	container := doc.Call("getElementById", "files")
 	container.Set("innerHTML", "")
 
+	selectedFile := currentFile
+	if selectedFile == "" && len(diffFiles) > 0 {
+		selectedFile = diffFiles[0].Path
+	}
+
 	for _, file := range diffFiles {
 		fileItem := doc.Call("createElement", "div")
 		fileItem.Get("classList").Call("add", "file-item")
@@ -160,6 +165,10 @@ func renderFileList() {
 		status := getFileCommentStatus(file.Path)
 		if status != "none" {
 			fileItem.Get("classList").Call("add", "has-comments-"+status)
+		}
+
+		if file.Path == selectedFile {
+			fileItem.Get("classList").Call("add", "active")
 		}
 
 		fileName := doc.Call("createElement", "div")
@@ -176,7 +185,7 @@ func renderFileList() {
 		container.Call("appendChild", fileItem)
 	}
 
-	if len(diffFiles) > 0 {
+	if currentFile == "" && len(diffFiles) > 0 {
 		selectFile(diffFiles[0].Path)
 	}
 }
@@ -473,6 +482,13 @@ func getLineContext(filePath string, lineNumber int) (string, string, string) {
 	return "", "", ""
 }
 
+func refreshFileView(filePath string) {
+	loadComments(filePath, func() {
+		renderDiff(filePath)
+		renderFileList()
+	})
+}
+
 func saveComment() {
 	input := doc.Call("getElementById", "comment-input")
 	content := input.Get("value").String()
@@ -496,9 +512,7 @@ func saveComment() {
 	promise := app.Call("AddComment", currentFile, content, currentLineNumber, contextBefore, contextLine, contextAfter)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		hideCommentModal()
-		loadComments(currentFile, func() {
-			renderDiff(currentFile)
-		})
+		refreshFileView(currentFile)
 		return nil
 	}))
 }
@@ -540,9 +554,7 @@ func updateComment() {
 	promise := app.Call("UpdateComment", currentFile, currentCommentID, content)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		hideEditCommentModal()
-		loadComments(currentFile, func() {
-			renderDiff(currentFile)
-		})
+		refreshFileView(currentFile)
 		return nil
 	}))
 }
@@ -560,9 +572,7 @@ func resolveComment(filePath string, commentID string) {
 
 	promise := app.Call("ResolveComment", filePath, commentID)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		loadComments(filePath, func() {
-			renderDiff(filePath)
-		})
+		refreshFileView(filePath)
 		return nil
 	}))
 }
@@ -580,9 +590,7 @@ func ignoreComment(filePath string, commentID string) {
 
 	promise := app.Call("IgnoreComment", filePath, commentID)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		loadComments(filePath, func() {
-			renderDiff(filePath)
-		})
+		refreshFileView(filePath)
 		return nil
 	}))
 }
@@ -600,9 +608,7 @@ func reactivateComment(filePath string, commentID string) {
 
 	promise := app.Call("ReactivateComment", filePath, commentID)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		loadComments(filePath, func() {
-			renderDiff(filePath)
-		})
+		refreshFileView(filePath)
 		return nil
 	}))
 }
@@ -620,9 +626,7 @@ func deleteComment(filePath string, commentID string) {
 
 	promise := app.Call("DeleteComment", filePath, commentID)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		loadComments(filePath, func() {
-			renderDiff(filePath)
-		})
+		refreshFileView(filePath)
 		return nil
 	}))
 }

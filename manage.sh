@@ -142,14 +142,31 @@ cmd_lint() {
 
 cmd_gopher_test() {
     check_go_version
+    local gopherjs_bin
+    gopherjs_bin="$(go env GOPATH)/bin/gopherjs"
+
+    if [ ! -f "$gopherjs_bin" ]; then
+        echo "Error: GopherJS not found at $gopherjs_bin"
+        echo "Run './manage.sh setup' first"
+        exit 1
+    fi
+
     echo "Running frontend tests..."
     cd frontend
-    GOWORK=off "$GO_VERSION" test -v
+    GOWORK=off GOPHERJS_GOROOT=$("$GO_VERSION" env GOROOT) "$gopherjs_bin" test -v
     cd ..
 }
 
 cmd_test() {
     check_go_version
+    local gopherjs_bin
+    gopherjs_bin="$(go env GOPATH)/bin/gopherjs"
+
+    if [ ! -f "$gopherjs_bin" ]; then
+        echo "Error: GopherJS not found at $gopherjs_bin"
+        echo "Run './manage.sh setup' first"
+        exit 1
+    fi
 
     echo "Running unit tests with coverage..."
     echo ""
@@ -164,6 +181,7 @@ cmd_test() {
 
     local model_exit=0
     local backend_exit=0
+    local frontend_exit=0
 
     echo "=== Model Tests ==="
     cd model
@@ -176,6 +194,13 @@ cmd_test() {
     cd backend
     go test -v -coverprofile="../$backend_coverage" ./...
     backend_exit=$?
+    cd ..
+    echo ""
+
+    echo "=== Frontend Tests ==="
+    cd frontend
+    GOWORK=off GOPHERJS_GOROOT=$("$GO_VERSION" env GOROOT) "$gopherjs_bin" test -v
+    frontend_exit=$?
     cd ..
     echo ""
 
@@ -221,7 +246,7 @@ cmd_test() {
     echo ""
     echo "Coverage files saved in: $coverage_dir/"
 
-    if [ $model_exit -ne 0 ] || [ $backend_exit -ne 0 ]; then
+    if [ $model_exit -ne 0 ] || [ $backend_exit -ne 0 ] || [ $frontend_exit -ne 0 ]; then
         exit 1
     fi
 }
