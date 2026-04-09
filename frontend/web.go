@@ -7,8 +7,7 @@ import (
 	"code-review/model"
 	"encoding/json"
 	"fmt"
-
-	"github.com/gopherjs/gopherjs/js"
+"github.com/gopherjs/gopherjs/js"
 )
 
 var (
@@ -177,6 +176,7 @@ func renderFileList() {
 		fileName := doc.Call("createElement", "div")
 		fileName.Get("classList").Call("add", "file-name")
 		fileName.Set("textContent", file.Path)
+		fileItem.Get("dataset").Set("path", file.Path)
 		fileItem.Call("appendChild", fileName)
 
 		filePath := file.Path
@@ -193,8 +193,31 @@ func renderFileList() {
 	}
 }
 
+func refreshState(callback func()) {
+	backend := win.Get("go")
+	if backend == js.Undefined {
+		callback()
+		return
+	}
+
+	app := backend.Get("main").Get("App")
+	if app == js.Undefined {
+		callback()
+		return
+	}
+
+	promise := app.Call("RefreshState")
+	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		callback()
+		return nil
+	}))
+}
+
 func selectFile(filePath string) {
 	currentFile = filePath
+
+	diffView := doc.Call("getElementById", "diff-view")
+	diffView.Set("scrollTop", 0)
 
 	allItems := doc.Call("querySelectorAll", ".file-item")
 	for i := 0; i < allItems.Length(); i++ {
@@ -204,8 +227,7 @@ func selectFile(filePath string) {
 	allItems = doc.Call("querySelectorAll", ".file-item")
 	for i := 0; i < allItems.Length(); i++ {
 		item := allItems.Index(i)
-		nameElem := item.Call("querySelector", ".file-name")
-		if nameElem != js.Undefined && nameElem.Get("textContent").String() == filePath {
+		if item.Get("dataset").Get("path").String() == filePath {
 			item.Get("classList").Call("add", "active")
 			break
 		}
@@ -213,8 +235,10 @@ func selectFile(filePath string) {
 
 	doc.Call("getElementById", "current-file-name").Set("textContent", filePath)
 
-	loadComments(filePath, func() {
-		renderDiff(filePath)
+	refreshState(func() {
+		loadComments(filePath, func() {
+			renderDiff(filePath)
+		})
 	})
 }
 
@@ -657,6 +681,18 @@ func setupEventHandlers() {
 				hideEditCommentModal()
 			}
 		}
+		return nil
+	}))
+
+	doc.Call("getElementById", "refresh-btn").Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		refreshState(func() {
+			loadAllComments(func() {
+				renderFileList()
+				if currentFile != "" {
+					renderDiff(currentFile)
+				}
+			})
+		})
 		return nil
 	}))
 

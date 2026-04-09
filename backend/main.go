@@ -11,22 +11,22 @@ import (
 	"fmt"
 	"os"
 
+	"code-review/assets"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"code-review/assets"
 )
 
 var version = "unreleased"
 
 type App struct {
-	ctx        context.Context
-	review     *model.Review
-	repoPath   string
-	userName   string
-	dataDir    string
-	statePath  string
-	diffFiles  []DiffFile
+	ctx       context.Context
+	review    *model.Review
+	repoPath  string
+	userName  string
+	dataDir   string
+	statePath string
+	diffFiles []DiffFile
 }
 
 func NewApp() *App {
@@ -85,6 +85,8 @@ func (a *App) startup(ctx context.Context) error {
 		return fmt.Errorf("failed to get diff: %w", err)
 	}
 
+	fmt.Println("state:", a.statePath)
+
 	a.diffFiles = ParseDiff(diffText)
 
 	for _, diffFile := range a.diffFiles {
@@ -93,6 +95,15 @@ func (a *App) startup(ctx context.Context) error {
 		}
 	}
 
+	return nil
+}
+
+func (a *App) RefreshState() error {
+	review, err := LoadReview(a.statePath)
+	if err != nil {
+		return fmt.Errorf("failed to reload state: %w", err)
+	}
+	a.review = review
 	return nil
 }
 

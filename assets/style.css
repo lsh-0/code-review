@@ -1,3 +1,66 @@
+:root {
+    /* Base */
+    --color-bg: #f5f5f5;
+    --color-bg-primary: white;
+    --color-bg-secondary: #f8f9fa;
+    --color-bg-tertiary: #fafbfc;
+    --color-bg-subtle: #f6f8fa;
+    --color-text: #333;
+    --color-text-secondary: #555;
+    --color-text-muted: #6b7280;
+    --color-text-strong: #1f2328;
+
+    /* Borders */
+    --color-border: #e1e4e8;
+    --color-border-light: #ddd;
+    --color-border-input: #d1d5da;
+
+    /* Accent / interactive */
+    --color-accent: #0366d6;
+    --color-accent-hover: #0256c7;
+    --color-accent-bg: #e8f4f8;
+    --color-hover-bg: #f0f5ff;
+    --color-hover-bg-subtle: #f3f4f6;
+
+    /* Header */
+    --color-header-bg: #2c3e50;
+    --color-header-text: white;
+
+    /* Diff - added */
+    --color-diff-add-bg: #e6ffed;
+    --color-diff-add-num-bg: #d4f0dc;
+    --color-diff-add-num-text: #0a5c2b;
+    --color-diff-add-content-bg: #d1f4da;
+
+    /* Diff - removed */
+    --color-diff-remove-bg: #ffebe9;
+    --color-diff-remove-num-bg: #ffdcd7;
+    --color-diff-remove-num-text: #a0111f;
+    --color-diff-remove-content-bg: #ffd8d6;
+
+    /* Diff - text on colored backgrounds */
+    --color-diff-text: #000;
+
+    /* Hunk header */
+    --color-hunk-text: #4b5563;
+
+    /* Status */
+    --color-status-active: #28a745;
+    --color-status-active-hover: #218838;
+    --color-status-resolved: #6f42c1;
+    --color-status-ignored: #6c757d;
+    --color-status-ignored-hover: #5a6268;
+
+    /* Danger */
+    --color-danger: #dc3545;
+    --color-danger-hover: #c82333;
+
+    /* Shadows / overlays */
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+    --color-overlay: rgba(0, 0, 0, 0.5);
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -11,15 +74,15 @@ html {
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    background: #f5f5f5;
-    color: #333;
+    background: var(--color-bg);
+    color: var(--color-text);
 }
 
 header {
-    background: #2c3e50;
-    color: white;
+    background: var(--color-header-bg);
+    color: var(--color-header-text);
     padding: 1rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow-sm);
 }
 
 .header-content h1 {
@@ -33,6 +96,21 @@ header {
     opacity: 0.9;
 }
 
+#refresh-btn {
+    margin-top: 0.5rem;
+    padding: 0.3rem 0.8rem;
+    background: var(--color-bg-secondary);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+#refresh-btn:hover {
+    background: var(--color-bg-primary);
+}
+
 #main-content {
     display: flex;
     height: 100vh;
@@ -40,8 +118,8 @@ header {
 
 #file-list {
     width: 300px;
-    background: white;
-    border-right: 1px solid #ddd;
+    background: var(--color-bg-primary);
+    border-right: 1px solid var(--color-border-light);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -52,9 +130,9 @@ header {
     font-weight: 600;
     padding: 1rem;
     margin: 0;
-    color: #555;
-    background: white;
-    border-bottom: 1px solid #e1e4e8;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-primary);
+    border-bottom: 1px solid var(--color-border);
 }
 
 #files {
@@ -66,34 +144,34 @@ header {
 .file-item {
     padding: 0.75rem;
     margin-bottom: 0.5rem;
-    background: #f8f9fa;
-    border: 1px solid #e1e4e8;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
     border-radius: 4px;
     cursor: pointer;
 }
 
 .file-item:hover {
-    background: #e8f4f8;
-    border-color: #0366d6;
+    background: var(--color-accent-bg);
+    border-color: var(--color-accent);
 }
 
 .file-item.active {
-    background: #e8f4f8;
-    border-color: #0366d6;
+    background: var(--color-accent-bg);
+    border-color: var(--color-accent);
 }
 
 .file-item.has-comments-active {
-    border-color: #28a745;
+    border-color: var(--color-status-active);
     border-width: 2px;
 }
 
 .file-item.has-comments-resolved {
-    border-color: #6f42c1;
+    border-color: var(--color-status-resolved);
     border-width: 2px;
 }
 
 .file-item.has-comments-ignored {
-    border-color: #6c757d;
+    border-color: var(--color-status-ignored);
     border-width: 2px;
 }
 
@@ -108,8 +186,8 @@ header {
     display: inline-block;
     margin-left: 0.5rem;
     padding: 0.1rem 0.4rem;
-    background: #6f42c1;
-    color: white;
+    background: var(--color-status-resolved);
+    color: var(--color-bg-primary);
     border-radius: 10px;
     font-size: 0.75rem;
 }
@@ -117,13 +195,13 @@ header {
 #diff-view {
     flex: 1;
     overflow-y: auto;
-    background: white;
+    background: var(--color-bg-primary);
 }
 
 #current-file-header {
     padding: 1rem 2rem;
-    background: #fafbfc;
-    border-bottom: 1px solid #e1e4e8;
+    background: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-border);
     position: sticky;
     top: 0;
     z-index: 10;
@@ -141,18 +219,18 @@ header {
 
 .diff-hunk {
     margin-bottom: 2rem;
-    border: 1px solid #e1e4e8;
+    border: 1px solid var(--color-border);
     border-radius: 6px;
     overflow: hidden;
 }
 
 .hunk-header {
-    background: #f6f8fa;
+    background: var(--color-bg-subtle);
     padding: 0.5rem 1rem;
     font-family: "Monaco", "Menlo", "Courier New", monospace;
     font-size: 0.85rem;
-    color: #586069;
-    border-bottom: 1px solid #e1e4e8;
+    color: var(--color-hunk-text);
+    border-bottom: 1px solid var(--color-border);
 }
 
 .diff-line {
@@ -164,21 +242,21 @@ header {
 }
 
 .diff-line:hover {
-    background: #f0f5ff;
+    background: var(--color-hover-bg);
 }
 
 .line-numbers {
     display: flex;
     user-select: none;
-    background: #fafbfc;
-    border-right: 1px solid #e1e4e8;
+    background: var(--color-bg-tertiary);
+    border-right: 1px solid var(--color-border);
 }
 
 .line-number {
     width: 50px;
     padding: 0.25rem 0.5rem;
     text-align: right;
-    color: #9ca3af;
+    color: var(--color-text-muted);
     font-size: 0.8rem;
 }
 
@@ -187,8 +265,8 @@ header {
 }
 
 .line-number.clickable:hover {
-    color: #0366d6;
-    background: #e8f4f8;
+    color: var(--color-accent);
+    background: var(--color-accent-bg);
 }
 
 .line-content {
@@ -209,8 +287,8 @@ header {
 
 .comment-btn {
     padding: 0.2rem 0.5rem;
-    background: #0366d6;
-    color: white;
+    background: var(--color-accent);
+    color: var(--color-bg-primary);
     border: none;
     border-radius: 3px;
     cursor: pointer;
@@ -218,35 +296,53 @@ header {
 }
 
 .comment-btn:hover {
-    background: #0256c7;
+    background: var(--color-accent-hover);
 }
 
 .diff-line.added {
-    background: #e6ffed;
+    background: var(--color-diff-add-bg);
+}
+
+.diff-line.added .line-numbers {
+    background: var(--color-diff-add-num-bg);
+}
+
+.diff-line.added .line-number {
+    color: var(--color-diff-add-num-text);
 }
 
 .diff-line.added .line-content {
-    background: #d1f4da;
+    background: var(--color-diff-add-content-bg);
+    color: var(--color-diff-text);
 }
 
 .diff-line.removed {
-    background: #ffebe9;
+    background: var(--color-diff-remove-bg);
+}
+
+.diff-line.removed .line-numbers {
+    background: var(--color-diff-remove-num-bg);
+}
+
+.diff-line.removed .line-number {
+    color: var(--color-diff-remove-num-text);
 }
 
 .diff-line.removed .line-content {
-    background: #ffd8d6;
+    background: var(--color-diff-remove-content-bg);
+    color: var(--color-diff-text);
 }
 
 .comment-thread {
-    background: #f6f8fa;
-    border-left: 3px solid #6f42c1;
+    background: var(--color-bg-subtle);
+    border-left: 3px solid var(--color-status-resolved);
     margin: 0.5rem 0;
     padding: 0.75rem 1rem;
 }
 
 .comment {
-    background: white;
-    border: 1px solid #e1e4e8;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
     border-radius: 6px;
     padding: 0.75rem;
     margin-bottom: 0.5rem;
@@ -272,23 +368,23 @@ header {
 }
 
 .comment-status.active {
-    background: #28a745;
-    color: white;
+    background: var(--color-status-active);
+    color: var(--color-bg-primary);
 }
 
 .comment-status.resolved {
-    background: #6f42c1;
-    color: white;
+    background: var(--color-status-resolved);
+    color: var(--color-bg-primary);
 }
 
 .comment-status.ignored {
-    background: #6c757d;
-    color: white;
+    background: var(--color-status-ignored);
+    color: var(--color-bg-primary);
 }
 
 .comment-author {
     font-size: 0.75rem;
-    color: #6c757d;
+    color: var(--color-status-ignored);
     font-weight: normal;
 }
 
@@ -305,27 +401,27 @@ header {
 
 .comment-actions button {
     padding: 0.3rem 0.6rem;
-    border: 1px solid #d1d5da;
-    background: white;
+    border: 1px solid var(--color-border-input);
+    background: var(--color-bg-primary);
     border-radius: 3px;
     cursor: pointer;
     font-size: 0.8rem;
 }
 
 .comment-actions button:hover {
-    background: #f3f4f6;
+    background: var(--color-hover-bg-subtle);
 }
 
 .comment-actions .delete-btn {
     margin-left: auto;
-    background: #dc3545;
-    color: white;
-    border-color: #dc3545;
+    background: var(--color-danger);
+    color: var(--color-bg-primary);
+    border-color: var(--color-danger);
 }
 
 .comment-actions .delete-btn:hover {
-    background: #c82333;
-    border-color: #c82333;
+    background: var(--color-danger-hover);
+    border-color: var(--color-danger-hover);
 }
 
 .modal {
@@ -335,7 +431,7 @@ header {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--color-overlay);
     z-index: 1000;
     align-items: center;
     justify-content: center;
@@ -346,12 +442,12 @@ header {
 }
 
 .modal-content {
-    background: white;
+    background: var(--color-bg-primary);
     padding: 2rem;
     border-radius: 8px;
     width: 90%;
     max-width: 600px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-md);
 }
 
 .modal-content h3 {
@@ -363,7 +459,7 @@ header {
     width: 100%;
     min-height: 150px;
     padding: 0.75rem;
-    border: 1px solid #d1d5da;
+    border: 1px solid var(--color-border-input);
     border-radius: 4px;
     font-family: inherit;
     font-size: 0.9rem;
@@ -387,22 +483,22 @@ header {
 
 #save-comment-btn,
 #update-comment-btn {
-    background: #28a745;
-    color: white;
+    background: var(--color-status-active);
+    color: var(--color-bg-primary);
 }
 
 #save-comment-btn:hover,
 #update-comment-btn:hover {
-    background: #218838;
+    background: var(--color-status-active-hover);
 }
 
 #cancel-comment-btn,
 #cancel-edit-comment-btn {
-    background: #6c757d;
-    color: white;
+    background: var(--color-status-ignored);
+    color: var(--color-bg-primary);
 }
 
 #cancel-comment-btn:hover,
 #cancel-edit-comment-btn:hover {
-    background: #5a6268;
+    background: var(--color-status-ignored-hover);
 }

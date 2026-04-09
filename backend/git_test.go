@@ -248,7 +248,7 @@ func TestGetUserNameInvalidRepo(t *testing.T) {
 func contains(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 && s != "" && substr != "" &&
 		(s == substr || len(s) >= len(substr) && s[:len(substr)] == substr ||
-		 len(s) > len(substr) && findInString(s, substr))
+			len(s) > len(substr) && findInString(s, substr))
 }
 
 func findInString(s, substr string) bool {
