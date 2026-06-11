@@ -12,6 +12,10 @@ import (
 )
 
 func SaveReview(path string, review *model.Review) error {
+	// stamp the current readme so existing state files pick it up and the
+	// text stays current if it is revised.
+	review.Readme = model.ReadmeText
+
 	data, err := json.MarshalIndent(review, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal review: %w", err)

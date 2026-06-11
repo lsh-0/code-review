@@ -1,14 +1,73 @@
+/* Fonts bundled under assets/fonts. Atkinson Hyperlegible Next is an
+   accessibility-oriented sans used for UI chrome; Source Code Pro is the
+   monospace used for diff and code, where column alignment matters. */
+@font-face {
+    font-family: "Atkinson Hyperlegible Next";
+    src: local("Atkinson Hyperlegible Next"), url("fonts/AtkinsonHyperlegibleNext-Regular.otf") format("opentype");
+    font-weight: 400;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "Atkinson Hyperlegible Next";
+    src: local("Atkinson Hyperlegible Next Bold"), url("fonts/AtkinsonHyperlegibleNext-Bold.otf") format("opentype");
+    font-weight: 700;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "Atkinson Hyperlegible Next";
+    src: local("Atkinson Hyperlegible Next Italic"), url("fonts/AtkinsonHyperlegibleNext-Italic.otf") format("opentype");
+    font-weight: 400;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: "Source Code Pro";
+    src: local("Source Code Pro"), url("fonts/SourceCodePro-Regular.otf") format("opentype");
+    font-weight: 400;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "Source Code Pro";
+    src: local("Source Code Pro Bold"), url("fonts/SourceCodePro-Bold.otf") format("opentype");
+    font-weight: 700;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "Source Code Pro";
+    src: local("Source Code Pro Italic"), url("fonts/SourceCodePro-It.otf") format("opentype");
+    font-weight: 400;
+    font-style: italic;
+}
+
 :root {
-    /* Base */
-    --color-bg: #f5f5f5;
-    --color-bg-primary: white;
-    --color-bg-secondary: #f8f9fa;
-    --color-bg-tertiary: #fafbfc;
-    --color-bg-subtle: #f6f8fa;
-    --color-text: #333;
-    --color-text-secondary: #555;
+    /* Font families */
+    --font-sans: "Atkinson Hyperlegible Next", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "Source Code Pro", "Monaco", "Menlo", "Courier New", monospace;
+
+    /* Code/diff text scale. Driven by Ctrl+wheel zoom, which sets --zoom on
+       the root element; the diff font size is the base times the zoom. */
+    --diff-font-base: 0.9rem;
+    --zoom: 1;
+    --diff-font-size: calc(var(--diff-font-base) * var(--zoom));
+
+    /* Base — warm, low-glare palette adapted from the ADL design system. */
+    --color-bg: #fffdf9;
+    --color-bg-primary: #fffdf9;
+    --color-bg-secondary: #faf6ee;
+    --color-bg-tertiary: #f6f1e7;
+    --color-bg-subtle: #f6f1e7;
+    --color-text: #0b0c0c;
+    --color-text-secondary: #3d3d3d;
     --color-text-muted: #6b7280;
-    --color-text-strong: #1f2328;
+    --color-text-strong: #0b0c0c;
+
+    /* Side navigation — kept cool to separate it from the warm body. */
+    --color-nav-bg: white;
+    --color-nav-item-bg: #f8f9fa;
 
     /* Borders */
     --color-border: #e1e4e8;
@@ -70,10 +129,13 @@
 
 html {
     scroll-behavior: auto !important;
+    /* Scale the whole UI up from the 16px default. Every rem-based size,
+       including the diff text, grows proportionally. */
+    font-size: 125%;
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--font-sans);
     background: var(--color-bg);
     color: var(--color-text);
 }
@@ -96,7 +158,8 @@ header {
     opacity: 0.9;
 }
 
-#refresh-btn {
+#refresh-btn,
+#copy-prompt-btn {
     margin-top: 0.5rem;
     padding: 0.3rem 0.8rem;
     background: var(--color-bg-secondary);
@@ -107,7 +170,8 @@ header {
     font-size: 0.8rem;
 }
 
-#refresh-btn:hover {
+#refresh-btn:hover,
+#copy-prompt-btn:hover {
     background: var(--color-bg-primary);
 }
 
@@ -118,7 +182,7 @@ header {
 
 #file-list {
     width: 300px;
-    background: var(--color-bg-primary);
+    background: var(--color-nav-bg);
     border-right: 1px solid var(--color-border-light);
     overflow-y: auto;
     display: flex;
@@ -131,7 +195,7 @@ header {
     padding: 1rem;
     margin: 0;
     color: var(--color-text-secondary);
-    background: var(--color-bg-primary);
+    background: var(--color-nav-bg);
     border-bottom: 1px solid var(--color-border);
 }
 
@@ -144,7 +208,7 @@ header {
 .file-item {
     padding: 0.75rem;
     margin-bottom: 0.5rem;
-    background: var(--color-bg-secondary);
+    background: var(--color-nav-item-bg);
     border: 1px solid var(--color-border);
     border-radius: 4px;
     cursor: pointer;
@@ -176,7 +240,7 @@ header {
 }
 
 .file-item .file-name {
-    font-family: "Monaco", "Menlo", "Courier New", monospace;
+    font-family: var(--font-mono);
     font-size: 0.85rem;
     word-break: break-all;
     overflow-wrap: anywhere;
@@ -210,7 +274,7 @@ header {
 #current-file-name {
     font-size: 1.1rem;
     font-weight: 600;
-    font-family: "Monaco", "Menlo", "Courier New", monospace;
+    font-family: var(--font-mono);
 }
 
 #diff-content {
@@ -227,22 +291,41 @@ header {
 .hunk-header {
     background: var(--color-bg-subtle);
     padding: 0.5rem 1rem;
-    font-family: "Monaco", "Menlo", "Courier New", monospace;
-    font-size: 0.85rem;
+    font-family: var(--font-mono);
+    font-size: var(--diff-font-size);
     color: var(--color-hunk-text);
     border-bottom: 1px solid var(--color-border);
 }
 
 .diff-line {
     display: flex;
-    font-family: "Monaco", "Menlo", "Courier New", monospace;
-    font-size: 0.85rem;
+    font-family: var(--font-mono);
+    font-size: var(--diff-font-size);
     line-height: 1.5;
     position: relative;
 }
 
 .diff-line:hover {
     background: var(--color-hover-bg);
+}
+
+/* The background hover above shows on plain lines, but added/removed lines
+   paint their own backgrounds over the row and hide it. This absolutely
+   positioned marker sits above the child backgrounds, giving every line a
+   consistent left-edge hover cue regardless of type. */
+.diff-line::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--color-accent);
+    opacity: 0;
+}
+
+.diff-line:hover::before {
+    opacity: 1;
 }
 
 .line-numbers {
@@ -257,7 +340,14 @@ header {
     padding: 0.25rem 0.5rem;
     text-align: right;
     color: var(--color-text-muted);
-    font-size: 0.8rem;
+    font-size: calc(0.8rem * var(--zoom));
+}
+
+/* Render the digit from the data-num attribute. CSS-generated content is not
+   part of the selection or clipboard, so line numbers are excluded when
+   selecting code across rows. */
+.line-number::before {
+    content: attr(data-num);
 }
 
 .line-number.clickable {

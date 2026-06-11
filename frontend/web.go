@@ -19,7 +19,26 @@ var (
 	currentUser       string
 	diffFiles         []DiffFile
 	commentsCache     map[string][]*model.Comment
+	zoomLevel         = 1.0
 )
+
+const (
+	zoomMin  = 0.5
+	zoomMax  = 3.0
+	zoomStep = 0.1
+)
+
+// apply the current `zoomLevel` to the document root as the `--zoom` CSS
+// custom property, which scales the diff and code text.
+func applyZoom() {
+	if zoomLevel < zoomMin {
+		zoomLevel = zoomMin
+	}
+	if zoomLevel > zoomMax {
+		zoomLevel = zoomMax
+	}
+	doc.Get("documentElement").Get("style").Call("setProperty", "--zoom", fmt.Sprintf("%g", zoomLevel))
+}
 
 type DiffFile struct {
 	Path  string     `json:"Path"`
@@ -70,6 +89,46 @@ func loadReviewInfo() {
 			branchInfo := doc.Call("getElementById", "branch-info")
 			branchInfo.Set("textContent", info["source_branch"]+" → "+info["target_branch"])
 		}
+		return nil
+	}))
+}
+
+// fetch the AI prompt (path + instructions) from the backend and write it to
+// the clipboard, giving brief feedback on the button itself.
+func copyStatePrompt() {
+	backend := win.Get("go")
+	if backend == js.Undefined {
+		return
+	}
+
+	app := backend.Get("main").Get("App")
+	if app == js.Undefined {
+		return
+	}
+
+	promise := app.Call("GetStatePrompt")
+	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		if len(args) == 0 || args[0] == js.Undefined {
+			return nil
+		}
+		prompt := args[0].String()
+
+		btn := doc.Call("getElementById", "copy-prompt-btn")
+		original := btn.Get("textContent").String()
+
+		clipboard := win.Get("navigator").Get("clipboard")
+		if clipboard == js.Undefined {
+			return nil
+		}
+		writePromise := clipboard.Call("writeText", prompt)
+		writePromise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			btn.Set("textContent", "Copied")
+			win.Call("setTimeout", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+				btn.Set("textContent", original)
+				return nil
+			}), 1500)
+			return nil
+		}))
 		return nil
 	}))
 }
@@ -328,17 +387,20 @@ func createDiffLine(line DiffLine, filePath string) *js.Object {
 	numbers := doc.Call("createElement", "div")
 	numbers.Get("classList").Call("add", "line-numbers")
 
+	// Line numbers are rendered via CSS (.line-number::before { content:
+	// attr(data-num) }) rather than as text content, so they are never part
+	// of the selectable/copyable text when dragging across diff rows.
 	oldNum := doc.Call("createElement", "div")
 	oldNum.Get("classList").Call("add", "line-number")
 	if line.OldLineNo > 0 {
-		oldNum.Set("textContent", fmt.Sprintf("%d", line.OldLineNo))
+		oldNum.Call("setAttribute", "data-num", fmt.Sprintf("%d", line.OldLineNo))
 	}
 	numbers.Call("appendChild", oldNum)
 
 	newNum := doc.Call("createElement", "div")
 	newNum.Get("classList").Call("add", "line-number")
 	if line.NewLineNo > 0 {
-		newNum.Set("textContent", fmt.Sprintf("%d", line.NewLineNo))
+		newNum.Call("setAttribute", "data-num", fmt.Sprintf("%d", line.NewLineNo))
 		newNum.Get("classList").Call("add", "clickable")
 		lineNo := line.NewLineNo
 		newNum.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
@@ -681,6 +743,24 @@ func setupEventHandlers() {
 				hideEditCommentModal()
 			}
 		}
+
+		// Ctrl +/-/0 zoom the code text, mirroring the Ctrl+wheel handler.
+		if event.Get("ctrlKey").Bool() {
+			switch key {
+			case "=", "+":
+				event.Call("preventDefault")
+				zoomLevel += zoomStep
+				applyZoom()
+			case "-", "_":
+				event.Call("preventDefault")
+				zoomLevel -= zoomStep
+				applyZoom()
+			case "0":
+				event.Call("preventDefault")
+				zoomLevel = 1.0
+				applyZoom()
+			}
+		}
 		return nil
 	}))
 
@@ -693,6 +773,11 @@ func setupEventHandlers() {
 				}
 			})
 		})
+		return nil
+	}))
+
+	doc.Call("getElementById", "copy-prompt-btn").Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		copyStatePrompt()
 		return nil
 	}))
 
@@ -744,6 +829,21 @@ func setupEventHandlers() {
 		event := args[0]
 		target := event.Get("target")
 		deltaY := event.Get("deltaY").Float()
+
+		// Ctrl+wheel zooms the code text rather than scrolling. The native
+		// WebKit zoom is unreliable under Wails and this handler would
+		// otherwise swallow the event via preventDefault below, so zoom is
+		// handled explicitly here.
+		if event.Get("ctrlKey").Bool() {
+			event.Call("preventDefault")
+			if deltaY < 0 {
+				zoomLevel += zoomStep
+			} else {
+				zoomLevel -= zoomStep
+			}
+			applyZoom()
+			return nil
+		}
 
 		current := target
 		var scrollableElement *js.Object

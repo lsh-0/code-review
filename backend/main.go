@@ -137,6 +137,13 @@ func (a *App) GetDiffFiles() (string, error) {
 	return string(data), nil
 }
 
+// a ready-to-paste prompt pointing a tool at the state file. The file's own
+// `_readme` field carries the schema and instructions, so this stays short.
+func (a *App) GetStatePrompt() string {
+	return fmt.Sprintf("Read the code review state file at %s and follow the instructions in its `_readme` field: "+
+		"address each comment with status 'active', then set that comment's status to 'resolved' or 'ignored'.", a.statePath)
+}
+
 func (a *App) GetComments(filePath string) (string, error) {
 	fileDiff := a.review.GetFileDiff(filePath)
 	if fileDiff == nil {

@@ -30,12 +30,30 @@ type FileDiff struct {
 }
 
 type Review struct {
+	Readme       string      `json:"_readme"`
 	ID           string      `json:"id"`
 	RepoPath     string      `json:"repo_path"`
 	SourceBranch string      `json:"source_branch"`
 	TargetBranch string      `json:"target_branch"`
 	Files        []*FileDiff `json:"files"`
 }
+
+// ReadmeText describes the state file for a tool (typically an AI) reading it
+// directly: what the file is, the schema, and how to act on comments. It is
+// stored in the Review's `_readme` field and refreshed on every save.
+const ReadmeText = "This is a code-review state file for the 'code-review' tool. " +
+	"It records review comments against a git diff (source_branch compared to target_branch in repo_path). " +
+	"Schema: `files` is an array of { file_path, comments[] }. Each comment has: " +
+	"`id` (stable identifier), `author`, `content` (the review note, in markdown), " +
+	"`line_number` (1-based line in the new version of the file), " +
+	"`status` (one of 'active', 'resolved', 'ignored'), and " +
+	"`context_before`/`context_line`/`context_after` (the surrounding source lines captured when the comment was made, " +
+	"used to relocate the comment if line numbers shift). " +
+	"To act on a review: read each comment with status 'active', make the requested change in the actual source file at " +
+	"file_path within repo_path, then set that comment's `status` to 'resolved' if you addressed it, or 'ignored' if you " +
+	"deliberately chose not to. Do not change `id`, `line_number`, or the context fields. Do not add or remove comments. " +
+	"Edit only the `status` field of existing comments. Preserve this `_readme` field and all other fields as-is. " +
+	"The file is JSON; write it back with the same structure."
 
 func GenerateID() string {
 	bytes := make([]byte, 8)
@@ -131,6 +149,7 @@ func (f *FileDiff) GetCommentsByLine(lineNumber int) []*Comment {
 
 func NewReview(repoPath, sourceBranch, targetBranch string) *Review {
 	return &Review{
+		Readme:       ReadmeText,
 		ID:           GenerateID(),
 		RepoPath:     repoPath,
 		SourceBranch: sourceBranch,

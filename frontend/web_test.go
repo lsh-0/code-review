@@ -22,7 +22,7 @@ func TestGetFileCommentStatus(t *testing.T) {
 		{
 			name: "single active comment",
 			comments: []*model.Comment{
-				model.NewComment("test", 1),
+				model.NewComment("test", 1, ""),
 			},
 			expected: "active",
 		},
@@ -43,7 +43,7 @@ func TestGetFileCommentStatus(t *testing.T) {
 		{
 			name: "active takes precedence over resolved",
 			comments: []*model.Comment{
-				model.NewComment("test1", 1),
+				model.NewComment("test1", 1, ""),
 				{ID: "2", Content: "test2", LineNumber: 2, Status: model.CommentStatusResolved},
 			},
 			expected: "active",
@@ -51,7 +51,7 @@ func TestGetFileCommentStatus(t *testing.T) {
 		{
 			name: "active takes precedence over ignored",
 			comments: []*model.Comment{
-				model.NewComment("test1", 1),
+				model.NewComment("test1", 1, ""),
 				{ID: "2", Content: "test2", LineNumber: 2, Status: model.CommentStatusIgnored},
 			},
 			expected: "active",
