@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -127,13 +128,7 @@ func TestGetCurrentBranch(t *testing.T) {
 	}
 
 	expectedBranches := []string{"master", "main"}
-	found := false
-	for _, expected := range expectedBranches {
-		if branch == expected {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(expectedBranches, branch)
 
 	if !found {
 		t.Errorf("Expected branch to be one of %v, got %s", expectedBranches, branch)
@@ -149,13 +144,7 @@ func TestGetDefaultBranch(t *testing.T) {
 	}
 
 	expectedBranches := []string{"master", "main"}
-	found := false
-	for _, expected := range expectedBranches {
-		if defaultBranch == expected {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(expectedBranches, defaultBranch)
 
 	if !found {
 		t.Errorf("Expected default branch to be one of %v, got %s", expectedBranches, defaultBranch)

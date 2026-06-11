@@ -1,5 +1,4 @@
 //go:build !js
-// +build !js
 
 package main
 
@@ -261,7 +260,7 @@ func main() {
 				os.Exit(1)
 			}
 		},
-		Bind: []interface{}{
+		Bind: []any{
 			app,
 		},
 	})

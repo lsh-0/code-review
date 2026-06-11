@@ -1,6 +1,6 @@
 module code-review/backend
 
-go 1.24
+go 1.26
 
 require (
 	code-review/model v0.0.0

@@ -5,6 +5,11 @@ set -e
 
 GO_VERSION="go1.19.13"
 
+# build against webkit2gtk-4.1 (libsoup3). the older webkit2gtk-4.0 packages
+# have been dropped from the Arch repos and only survive in the AUR, where they
+# no longer track ICU; 4.1 is the maintained, ICU-current package.
+WAILS_TAGS="webkit2_41"
+
 check_go_version() {
     if ! command -v "$GO_VERSION" &> /dev/null; then
         echo "Error: $GO_VERSION not found"
@@ -42,7 +47,7 @@ cmd_gopher_build() {
 cmd_wails_build() {
     echo "Building Wails application..."
     cd backend
-    wails build 2>&1 | grep -v "If Wails is useful" | grep -v "github.com/sponsors"
+    wails build -tags "$WAILS_TAGS" 2>&1 | grep -v "If Wails is useful" | grep -v "github.com/sponsors"
     cd ..
     echo "Build complete: backend/build/bin/code-review"
 }
@@ -50,7 +55,7 @@ cmd_wails_build() {
 cmd_wails_dev() {
     echo "Running Wails in development mode..."
     cd backend
-    wails dev
+    wails dev -tags "$WAILS_TAGS"
 }
 
 cmd_release() {
@@ -67,7 +72,7 @@ cmd_release() {
 
     echo "Building Wails application for release (version: $version_input)..."
     cd backend
-    wails build -clean -ldflags "-s -w -X 'main.version=$version_input'" 2>&1 | grep -v "If Wails is useful" | grep -v "github.com/sponsors"
+    wails build -clean -tags "$WAILS_TAGS" -ldflags "-s -w -X 'main.version=$version_input'" 2>&1 | grep -v "If Wails is useful" | grep -v "github.com/sponsors"
     cd ..
 
     echo "Copying binary to dist..."
@@ -132,11 +137,46 @@ cmd_clean() {
 }
 
 cmd_lint() {
-    echo "Running go fmt..."
-    for dir in model frontend backend; do
-        echo "  Formatting $dir..."
-        (cd "$dir" && go fmt ./...)
-    done
+    check_go_version
+
+    # backend: standard Go 1.26 toolchain.
+    echo "Linting backend..."
+    cd backend
+    go mod tidy
+    go fmt ./...
+    go vet ./...
+    go fix ./...
+    cd ..
+
+    # model: standard Go 1.26 toolchain (also consumed by the frontend).
+    echo "Linting model..."
+    cd model
+    go mod tidy
+    go fmt ./...
+    go vet ./...
+    go fix ./...
+    cd ..
+
+    # assets: standard Go 1.26 toolchain.
+    echo "Linting assets..."
+    cd assets
+    go mod tidy
+    go fmt ./...
+    go vet ./...
+    go fix ./...
+    cd ..
+
+    # frontend: its files are gated behind //go:build js and only compile
+    # under the GopherJS 1.19 toolchain. it is tidied with that toolchain and
+    # formatted with gofmt, but go vet and go fix are omitted. gofmt is used
+    # instead of 'go fmt ./...' because the latter matches no packages: the
+    # js-gated files are excluded from the host build context.
+    echo "Linting frontend (GopherJS)..."
+    cd frontend
+    GOWORK=off "$GO_VERSION" mod tidy
+    gofmt -w .
+    cd ..
+
     echo "Lint complete"
 }
 
@@ -256,11 +296,12 @@ cmd_setup() {
 
     case "$(uname -s)" in
         Linux*)
-            if ! pkg-config --exists webkit2gtk-4.0; then
-                echo "Error: webkit2gtk-4.0 not found"
+            if ! pkg-config --exists webkit2gtk-4.1; then
+                echo "Error: webkit2gtk-4.1 not found"
                 echo ""
-                echo "Please install WebKit2GTK:"
-                echo "  sudo apt-get install libwebkit2gtk-4.0-dev"
+                echo "Please install WebKit2GTK 4.1 (libsoup3):"
+                echo "  Arch:   sudo pacman -S webkit2gtk-4.1"
+                echo "  Debian: sudo apt-get install libwebkit2gtk-4.1-dev"
                 echo ""
                 exit 1
             fi
@@ -307,7 +348,7 @@ Commands:
     wails.build        Build only the Wails application
     wails.dev          Run Wails in development mode with dev tools
     test               Run all unit tests with coverage reporting
-    lint               Format all Go code with go fmt
+    lint               Tidy, format, vet and fix all Go modules
     release            Build optimised release binary to dist/
     release.install    Build release and install to ~/.local/bin
     release.install --system

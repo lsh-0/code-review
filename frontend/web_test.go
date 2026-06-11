@@ -192,7 +192,7 @@ func TestGetLineContextNotFound(t *testing.T) {
 func TestGetLineContextFileNotFound(t *testing.T) {
 	diffFiles = []DiffFile{
 		{
-			Path: "test.go",
+			Path:  "test.go",
 			Hunks: []DiffHunk{},
 		},
 	}

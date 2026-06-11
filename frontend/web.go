@@ -7,18 +7,18 @@ import (
 	"code-review/model"
 	"encoding/json"
 	"fmt"
-"github.com/gopherjs/gopherjs/js"
+	"github.com/gopherjs/gopherjs/js"
 )
 
 var (
-	doc                *js.Object
-	win                *js.Object
-	currentFile        string
-	currentLineNumber  int
-	currentCommentID   string
-	currentUser        string
-	diffFiles          []DiffFile
-	commentsCache      map[string][]*model.Comment
+	doc               *js.Object
+	win               *js.Object
+	currentFile       string
+	currentLineNumber int
+	currentCommentID  string
+	currentUser       string
+	diffFiles         []DiffFile
+	commentsCache     map[string][]*model.Comment
 )
 
 type DiffFile struct {
