@@ -17,9 +17,17 @@ Pre-requisites:
 
 
 ```bash
-./manage.sh setup   # Installs Go 1.19.13, GopherJS, and Wails
+./manage.sh setup   # Installs Go 1.19.x, GopherJS, and Wails
 ./manage.sh build
 cp ./backend/build/bin/code-review /path/to/your/local/bin/
+
+# or
+
+./manage.sh release.install
+
+# then
+
+code-review
 ```
 
 ## Running
