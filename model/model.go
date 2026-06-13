@@ -13,6 +13,15 @@ const (
 	CommentStatusIgnored  CommentStatus = "ignored"
 )
 
+// Reply is a child note under a root Comment. Replies form a flat,
+// sequential thread; they carry no status of their own and cannot nest
+// further. Only the root comment is resolvable.
+type Reply struct {
+	ID      string `json:"id"`
+	Author  string `json:"author"`
+	Content string `json:"content"`
+}
+
 type Comment struct {
 	ID            string        `json:"id"`
 	Author        string        `json:"author"`
@@ -22,6 +31,7 @@ type Comment struct {
 	ContextBefore string        `json:"context_before"`
 	ContextLine   string        `json:"context_line"`
 	ContextAfter  string        `json:"context_after"`
+	Replies       []*Reply      `json:"replies,omitempty"`
 }
 
 type FileDiff struct {
@@ -36,6 +46,7 @@ type Review struct {
 	SourceBranch string      `json:"source_branch"`
 	TargetBranch string      `json:"target_branch"`
 	Files        []*FileDiff `json:"files"`
+	MarkedFiles  []string    `json:"marked_files"`
 }
 
 // ReadmeText describes the state file for a tool (typically an AI) reading it
@@ -48,11 +59,14 @@ const ReadmeText = "This is a code-review state file for the 'code-review' tool.
 	"`line_number` (1-based line in the new version of the file), " +
 	"`status` (one of 'active', 'resolved', 'ignored'), and " +
 	"`context_before`/`context_line`/`context_after` (the surrounding source lines captured when the comment was made, " +
-	"used to relocate the comment if line numbers shift). " +
+	"used to relocate the comment if line numbers shift), and " +
+	"`replies` (an optional flat array of { id, author, content } child notes forming a thread under the comment; " +
+	"replies have no status of their own and only the root comment is resolvable). " +
 	"To act on a review: read each comment with status 'active', make the requested change in the actual source file at " +
 	"file_path within repo_path, then set that comment's `status` to 'resolved' if you addressed it, or 'ignored' if you " +
 	"deliberately chose not to. Do not change `id`, `line_number`, or the context fields. Do not add or remove comments. " +
 	"Edit only the `status` field of existing comments. Preserve this `_readme` field and all other fields as-is. " +
+	"`marked_files` is an array of file_path strings the reviewer has marked as done/visited; it is reviewer bookkeeping only and requires no action. " +
 	"The file is JSON; write it back with the same structure."
 
 func GenerateID() string {
@@ -98,6 +112,21 @@ func (c *Comment) Reactivate() {
 
 func (c *Comment) UpdateContent(content string) {
 	c.Content = content
+}
+
+func NewReply(content string, author string) *Reply {
+	return &Reply{
+		ID:      GenerateID(),
+		Author:  author,
+		Content: content,
+	}
+}
+
+// append a child reply to the comment's flat reply thread.
+func (c *Comment) AddReply(content string, author string) *Reply {
+	reply := NewReply(content, author)
+	c.Replies = append(c.Replies, reply)
+	return reply
 }
 
 func NewFileDiff(filePath string) *FileDiff {
@@ -171,6 +200,33 @@ func (r *Review) GetFileDiff(filePath string) *FileDiff {
 		}
 	}
 	return nil
+}
+
+// report whether `filePath` is in the marked-files set.
+func (r *Review) IsFileMarked(filePath string) bool {
+	for _, marked := range r.MarkedFiles {
+		if marked == filePath {
+			return true
+		}
+	}
+	return false
+}
+
+// add `filePath` to the marked-files set, with no effect if already present.
+func (r *Review) MarkFile(filePath string) {
+	if !r.IsFileMarked(filePath) {
+		r.MarkedFiles = append(r.MarkedFiles, filePath)
+	}
+}
+
+// remove `filePath` from the marked-files set, with no effect if absent.
+func (r *Review) UnmarkFile(filePath string) {
+	for i, marked := range r.MarkedFiles {
+		if marked == filePath {
+			r.MarkedFiles = append(r.MarkedFiles[:i], r.MarkedFiles[i+1:]...)
+			return
+		}
+	}
 }
 
 func (r *Review) GetAllComments() []*Comment {

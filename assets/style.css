@@ -206,11 +206,20 @@ header {
 }
 
 .file-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     padding: 0.75rem;
     margin-bottom: 0.5rem;
     background: var(--color-nav-item-bg);
     border: 1px solid var(--color-border);
     border-radius: 4px;
+    cursor: pointer;
+}
+
+.file-item .file-marked {
+    flex: 0 0 auto;
+    margin: 0;
     cursor: pointer;
 }
 
@@ -363,7 +372,7 @@ header {
     flex: 1;
     padding: 0.25rem 0.5rem;
     white-space: pre-wrap;
-    word-break: break-all;
+    overflow-wrap: anywhere;
 }
 
 .line-actions {
@@ -482,6 +491,24 @@ header {
     margin-bottom: 0.5rem;
     line-height: 1.5;
     white-space: pre-wrap;
+}
+
+.comment-replies {
+    margin: 0.5rem 0 0.5rem 1rem;
+    border-left: 2px solid var(--color-border);
+    padding-left: 0.75rem;
+}
+
+.comment-reply {
+    padding: 0.4rem 0;
+}
+
+.comment-reply + .comment-reply {
+    border-top: 1px solid var(--color-border);
+}
+
+.comment-reply .comment-content {
+    margin-bottom: 0;
 }
 
 .comment-actions {

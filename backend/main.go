@@ -157,6 +157,28 @@ func (a *App) GetComments(filePath string) (string, error) {
 	return string(data), nil
 }
 
+func (a *App) GetMarkedFiles() (string, error) {
+	marked := a.review.MarkedFiles
+	if marked == nil {
+		marked = []string{}
+	}
+	data, err := json.Marshal(marked)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func (a *App) SetFileMarked(filePath string, marked bool) error {
+	if marked {
+		a.review.MarkFile(filePath)
+	} else {
+		a.review.UnmarkFile(filePath)
+	}
+
+	return SaveReview(a.statePath, a.review)
+}
+
 func (a *App) AddComment(filePath string, content string, lineNumber int, contextBefore string, contextLine string, contextAfter string) error {
 	fileDiff := a.review.GetFileDiff(filePath)
 	if fileDiff == nil {
@@ -180,6 +202,22 @@ func (a *App) UpdateComment(filePath string, commentID string, content string) e
 	}
 
 	comment.UpdateContent(content)
+
+	return SaveReview(a.statePath, a.review)
+}
+
+func (a *App) AddReply(filePath string, commentID string, content string) error {
+	fileDiff := a.review.GetFileDiff(filePath)
+	if fileDiff == nil {
+		return fmt.Errorf("file not found: %s", filePath)
+	}
+
+	comment := fileDiff.GetComment(commentID)
+	if comment == nil {
+		return fmt.Errorf("comment not found: %s", commentID)
+	}
+
+	comment.AddReply(content, a.userName)
 
 	return SaveReview(a.statePath, a.review)
 }

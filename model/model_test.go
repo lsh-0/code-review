@@ -305,3 +305,138 @@ func TestFileDiffAddCommentWithContext(t *testing.T) {
 		t.Errorf("Expected context line 'target', got '%s'", diff.Comments[0].ContextLine)
 	}
 }
+
+func TestReviewMarkFile(t *testing.T) {
+	given := NewReview("/repo", "branch", "main")
+
+	given.MarkFile("file.go")
+
+	expected := true
+	actual := given.IsFileMarked("file.go")
+	if actual != expected {
+		t.Errorf("Expected file to be marked: got %v, want %v", actual, expected)
+	}
+
+	if len(given.MarkedFiles) != 1 {
+		t.Errorf("Expected 1 marked file, got %d", len(given.MarkedFiles))
+	}
+}
+
+func TestReviewMarkFileIsIdempotent(t *testing.T) {
+	given := NewReview("/repo", "branch", "main")
+
+	given.MarkFile("file.go")
+	given.MarkFile("file.go")
+
+	expected := 1
+	actual := len(given.MarkedFiles)
+	if actual != expected {
+		t.Errorf("Expected marking twice to add once: got %d, want %d", actual, expected)
+	}
+}
+
+func TestReviewUnmarkFile(t *testing.T) {
+	given := NewReview("/repo", "branch", "main")
+	given.MarkFile("file.go")
+
+	given.UnmarkFile("file.go")
+
+	expected := false
+	actual := given.IsFileMarked("file.go")
+	if actual != expected {
+		t.Errorf("Expected file to be unmarked: got %v, want %v", actual, expected)
+	}
+
+	if len(given.MarkedFiles) != 0 {
+		t.Errorf("Expected 0 marked files, got %d", len(given.MarkedFiles))
+	}
+}
+
+func TestReviewUnmarkAbsentFileIsNoOp(t *testing.T) {
+	given := NewReview("/repo", "branch", "main")
+	given.MarkFile("kept.go")
+
+	given.UnmarkFile("never-marked.go")
+
+	expected := 1
+	actual := len(given.MarkedFiles)
+	if actual != expected {
+		t.Errorf("Expected unmarking an absent file to leave the set intact: got %d, want %d", actual, expected)
+	}
+
+	if !given.IsFileMarked("kept.go") {
+		t.Error("Expected the originally marked file to remain marked")
+	}
+}
+
+func TestReviewIsFileMarkedUnknown(t *testing.T) {
+	given := NewReview("/repo", "branch", "main")
+
+	expected := false
+	actual := given.IsFileMarked("unknown.go")
+	if actual != expected {
+		t.Errorf("Expected unknown file to be unmarked: got %v, want %v", actual, expected)
+	}
+}
+
+func TestNewReply(t *testing.T) {
+	given := NewReply("a reply", "Test User")
+
+	if given.Content != "a reply" {
+		t.Errorf("Expected content 'a reply', got '%s'", given.Content)
+	}
+
+	if given.Author != "Test User" {
+		t.Errorf("Expected author 'Test User', got '%s'", given.Author)
+	}
+
+	if given.ID == "" {
+		t.Error("Expected a generated ID, got empty string")
+	}
+}
+
+func TestCommentAddReply(t *testing.T) {
+	given := NewComment("root", 5, "Test User")
+
+	reply := given.AddReply("first reply", "Test User")
+
+	expected := 1
+	actual := len(given.Replies)
+	if actual != expected {
+		t.Errorf("Expected %d reply, got %d", expected, actual)
+	}
+
+	if given.Replies[0] != reply {
+		t.Error("Expected returned reply to be in the replies list")
+	}
+}
+
+func TestCommentAddReplyPreservesOrder(t *testing.T) {
+	given := NewComment("root", 5, "Test User")
+
+	given.AddReply("first", "Test User")
+	given.AddReply("second", "Test User")
+	given.AddReply("third", "Test User")
+
+	expected := []string{"first", "second", "third"}
+	for i, want := range expected {
+		actual := given.Replies[i].Content
+		if actual != want {
+			t.Errorf("Reply %d: got '%s', want '%s'", i, actual, want)
+		}
+	}
+}
+
+func TestCommentRepliesIndependentOfStatus(t *testing.T) {
+	given := NewComment("root", 5, "Test User")
+	given.AddReply("a reply", "Test User")
+
+	given.Resolve()
+
+	// resolving the root comment must not disturb its replies.
+	expected := 1
+	actual := len(given.Replies)
+	if actual != expected {
+		t.Errorf("Expected replies to survive resolve: got %d, want %d", actual, expected)
+	}
+}

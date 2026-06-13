@@ -17,8 +17,10 @@ var (
 	currentLineNumber int
 	currentCommentID  string
 	currentUser       string
+	currentReplyID    string
 	diffFiles         []DiffFile
 	commentsCache     map[string][]*model.Comment
+	markedFiles       map[string]bool
 	zoomLevel         = 1.0
 )
 
@@ -168,11 +170,59 @@ func loadDiffFiles() {
 			filesJSON := args[0].String()
 			json.Unmarshal([]byte(filesJSON), &diffFiles)
 			loadAllComments(func() {
-				renderFileList()
+				loadMarkedFiles(func() {
+					renderFileList()
+				})
 			})
 		}
 		return nil
 	}))
+}
+
+// load the set of files the reviewer has marked as done into `markedFiles`,
+// then invoke `callback`.
+func loadMarkedFiles(callback func()) {
+	markedFiles = make(map[string]bool)
+
+	backend := win.Get("go")
+	if backend == js.Undefined {
+		callback()
+		return
+	}
+
+	app := backend.Get("main").Get("App")
+	if app == js.Undefined {
+		callback()
+		return
+	}
+
+	promise := app.Call("GetMarkedFiles")
+	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		if len(args) > 0 && args[0] != js.Undefined {
+			var paths []string
+			json.Unmarshal([]byte(args[0].String()), &paths)
+			for _, path := range paths {
+				markedFiles[path] = true
+			}
+		}
+		callback()
+		return nil
+	}))
+}
+
+// persist the marked/unmarked state of `filePath` to the backend state file.
+func setFileMarked(filePath string, marked bool) {
+	backend := win.Get("go")
+	if backend == js.Undefined {
+		return
+	}
+
+	app := backend.Get("main").Get("App")
+	if app == js.Undefined {
+		return
+	}
+
+	app.Call("SetFileMarked", filePath, marked)
 }
 
 func getFileCommentStatus(filePath string) string {
@@ -232,15 +282,53 @@ func renderFileList() {
 			fileItem.Get("classList").Call("add", "active")
 		}
 
+		filePath := file.Path
+
+		checkbox := doc.Call("createElement", "input")
+		checkbox.Call("setAttribute", "type", "checkbox")
+		checkbox.Get("classList").Call("add", "file-marked")
+		checkbox.Set("checked", markedFiles[filePath])
+		// clicking the checkbox must not bubble to the file-item's click
+		// listener, which would select the file.
+		checkbox.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			args[0].Call("stopPropagation")
+			return nil
+		}))
+		checkbox.Call("addEventListener", "change", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			marked := this.Get("checked").Bool()
+			markedFiles[filePath] = marked
+			setFileMarked(filePath, marked)
+			return nil
+		}))
+		fileItem.Call("appendChild", checkbox)
+
 		fileName := doc.Call("createElement", "div")
 		fileName.Get("classList").Call("add", "file-name")
 		fileName.Set("textContent", file.Path)
 		fileItem.Get("dataset").Set("path", file.Path)
 		fileItem.Call("appendChild", fileName)
 
-		filePath := file.Path
 		fileItem.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 			selectFile(filePath)
+			return nil
+		}))
+
+		// the double-click below would otherwise form a word selection on the
+		// filename. cancelling `selectstart` stops that selection before it
+		// paints, avoiding a highlight flash.
+		fileItem.Call("addEventListener", "selectstart", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			args[0].Call("preventDefault")
+			return nil
+		}))
+
+		// double-clicking the item toggles its done checkbox. the constituent
+		// single clicks select the file first, so a double-click acts on the
+		// now-selected file. drive the checkbox itself so its `change` handler
+		// remains the single place that updates state and persists.
+		fileItem.Call("addEventListener", "dblclick", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			checkbox.Set("checked", !checkbox.Get("checked").Bool())
+			event := win.Get("Event").New("change")
+			checkbox.Call("dispatchEvent", event)
 			return nil
 		}))
 
@@ -474,10 +562,27 @@ func createCommentElement(filePath string, comment *model.Comment) *js.Object {
 	content.Set("textContent", comment.Content)
 	elem.Call("appendChild", content)
 
+	if len(comment.Replies) > 0 {
+		replies := doc.Call("createElement", "div")
+		replies.Get("classList").Call("add", "comment-replies")
+		for _, reply := range comment.Replies {
+			replies.Call("appendChild", createReplyElement(reply))
+		}
+		elem.Call("appendChild", replies)
+	}
+
 	actions := doc.Call("createElement", "div")
 	actions.Get("classList").Call("add", "comment-actions")
 
 	commentID := comment.ID
+
+	replyBtn := doc.Call("createElement", "button")
+	replyBtn.Set("textContent", "Reply")
+	replyBtn.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		showReplyModal(filePath, commentID)
+		return nil
+	}))
+	actions.Call("appendChild", replyBtn)
 
 	editBtn := doc.Call("createElement", "button")
 	editBtn.Set("textContent", "Edit")
@@ -523,6 +628,28 @@ func createCommentElement(filePath string, comment *model.Comment) *js.Object {
 	actions.Call("appendChild", deleteBtn)
 
 	elem.Call("appendChild", actions)
+
+	return elem
+}
+
+func createReplyElement(reply *model.Reply) *js.Object {
+	elem := doc.Call("createElement", "div")
+	elem.Get("classList").Call("add", "comment-reply")
+
+	if reply.Author != "" && reply.Author != currentUser {
+		header := doc.Call("createElement", "div")
+		header.Get("classList").Call("add", "comment-header")
+		author := doc.Call("createElement", "span")
+		author.Get("classList").Call("add", "comment-author")
+		author.Set("textContent", "("+reply.Author+")")
+		header.Call("appendChild", author)
+		elem.Call("appendChild", header)
+	}
+
+	content := doc.Call("createElement", "div")
+	content.Get("classList").Call("add", "comment-content")
+	content.Set("textContent", reply.Content)
+	elem.Call("appendChild", content)
 
 	return elem
 }
@@ -651,6 +778,48 @@ func updateComment() {
 	promise := app.Call("UpdateComment", currentFile, currentCommentID, content)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		hideEditCommentModal()
+		refreshFileView(currentFile)
+		return nil
+	}))
+}
+
+func showReplyModal(filePath string, commentID string) {
+	currentFile = filePath
+	currentReplyID = commentID
+
+	modal := doc.Call("getElementById", "reply-comment-modal")
+	input := doc.Call("getElementById", "reply-comment-input")
+	input.Set("value", "")
+	modal.Get("classList").Call("add", "active")
+	input.Call("focus")
+}
+
+func hideReplyModal() {
+	modal := doc.Call("getElementById", "reply-comment-modal")
+	modal.Get("classList").Call("remove", "active")
+}
+
+func saveReply() {
+	input := doc.Call("getElementById", "reply-comment-input")
+	content := input.Get("value").String()
+
+	if content == "" {
+		return
+	}
+
+	backend := win.Get("go")
+	if backend == js.Undefined {
+		return
+	}
+
+	app := backend.Get("main").Get("App")
+	if app == js.Undefined {
+		return
+	}
+
+	promise := app.Call("AddReply", currentFile, currentReplyID, content)
+	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		hideReplyModal()
 		refreshFileView(currentFile)
 		return nil
 	}))
@@ -801,10 +970,21 @@ func setupEventHandlers() {
 		return nil
 	}))
 
+	doc.Call("getElementById", "save-reply-btn").Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		saveReply()
+		return nil
+	}))
+
+	doc.Call("getElementById", "cancel-reply-btn").Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		hideReplyModal()
+		return nil
+	}))
+
 	commentModal := doc.Call("getElementById", "comment-modal")
 	editModal := doc.Call("getElementById", "edit-comment-modal")
+	replyModal := doc.Call("getElementById", "reply-comment-modal")
 
-	modals := []*js.Object{commentModal, editModal}
+	modals := []*js.Object{commentModal, editModal, replyModal}
 	for _, modal := range modals {
 		if modal != js.Undefined && modal != nil {
 			var mousedownTarget *js.Object
