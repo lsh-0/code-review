@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-13
+
+### Added
+
+- Expand the diff to show more of the surrounding file: an "expand 20 lines" control sits above, between and below hunks
+  and reveals hidden unchanged context on demand.
+  - Fully revealing the gap between two hunks merges them into one continuous block.
+  - At the top or bottom of a file the control stays visible but disabled, so the navigation never shifts.
+- Threaded replies on review comments, persisted with each comment in the state file.
+- Per-file "done" checkbox in the file list, also toggled by double-clicking a file; the marked state is remembered.
+- "Browse" link on the filename that opens the file in the operating system's preferred application.
+
+### Changed
+
+- Diff lines now wrap on word boundaries rather than mid-word, with long unbreakable tokens still wrapping to avoid
+  horizontal overflow.
+
+### Fixed
+
+- Binary files are detected and shown as a plain "binary file" placeholder instead of a confusing empty diff.
+
 ## [0.4.0] - 2026-06-11
 
 ### Added
