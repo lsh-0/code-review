@@ -65,8 +65,12 @@ const ReadmeText = "This is a code-review state file for the 'code-review' tool.
 	"To act on a review: read each comment with status 'active', make the requested change in the actual source file at " +
 	"file_path within repo_path, then set that comment's `status` to 'resolved' if you addressed it, or 'ignored' if you " +
 	"deliberately chose not to. Do not change `id`, `line_number`, or the context fields. Do not add or remove comments. " +
-	"Edit only the `status` field of existing comments. Preserve this `_readme` field and all other fields as-is. " +
-	"`marked_files` is an array of file_path strings the reviewer has marked as done/visited; it is reviewer bookkeeping only and requires no action. " +
+	"Edit only the `status` field of existing comments. " +
+	"`marked_files` is an array of file_path strings the reviewer has marked as reviewed. Whenever you modify a source file " +
+	"while acting on this review, remove that file's path from `marked_files` if present, so the reviewer can see at a glance " +
+	"which reviewed files have changed and need revisiting. This applies to every file you edit, including files changed " +
+	"because feedback in one file applies to others that have no comments of their own. Do not add paths to `marked_files`. " +
+	"Apart from comment `status` values and removing entries from `marked_files`, preserve this `_readme` field and all other fields as-is. " +
 	"The file is JSON; write it back with the same structure."
 
 func GenerateID() string {
