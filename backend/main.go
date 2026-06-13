@@ -185,7 +185,8 @@ func (a *App) BrowseFile(filePath string) error {
 // `_readme` field carries the schema and instructions, so this stays short.
 func (a *App) GetStatePrompt() string {
 	return fmt.Sprintf("Read the code review state file at %s and follow the instructions in its `_readme` field: "+
-		"address each comment with status 'active', then set that comment's status to 'resolved' or 'ignored', "+
+		"address every comment with status 'active' (mechanical changes first, then larger ones) and set each to 'resolved' once done; "+
+		"do not mark anything 'ignored' on your own — instead leave it 'active' and add a reply explaining the blocker; "+
 		"and unmark any file you change by removing it from `marked_files`.", a.statePath)
 }
 
