@@ -4,6 +4,7 @@ package main
 
 import (
 	"code-review/model"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -122,6 +123,52 @@ func TestApp_CommentStatusErrors(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for nonexistent comment, got nil")
 	}
+}
+
+func TestApp_GetFileLines(t *testing.T) {
+	tmp_dir := setupTestRepo(t)
+	branch, err := GetCurrentBranch(tmp_dir)
+	if err != nil {
+		t.Fatalf("failed to get branch: %v", err)
+	}
+
+	app := &App{
+		review:   model.NewReview(tmp_dir, branch, branch),
+		repoPath: tmp_dir,
+	}
+	app.fileCache = newFileContentCache(func(rev, path string) (string, error) {
+		return GetFileAtRevision(app.repoPath, rev, path)
+	})
+
+	t.Run("returns requested range and total", func(t *testing.T) {
+		// the test repo's test.txt is a single line "initial content".
+		raw, err := app.GetFileLines("test.txt", 1, 1, 0)
+		if err != nil {
+			t.Fatalf("GetFileLines failed: %v", err)
+		}
+
+		var result struct {
+			Lines    []DiffLine
+			TotalNew int
+		}
+		if err := json.Unmarshal([]byte(raw), &result); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+
+		if result.TotalNew != 1 {
+			t.Errorf("expected total 1, got %d", result.TotalNew)
+		}
+		if len(result.Lines) != 1 || result.Lines[0].Content != "initial content" {
+			t.Errorf("expected single line 'initial content', got %+v", result.Lines)
+		}
+	})
+
+	t.Run("missing path errors", func(t *testing.T) {
+		_, err := app.GetFileLines("nonexistent.txt", 1, 1, 0)
+		if err == nil {
+			t.Error("expected error for missing path, got nil")
+		}
+	})
 }
 
 func TestApp_UpdateComment(t *testing.T) {

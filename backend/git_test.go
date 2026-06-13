@@ -214,6 +214,33 @@ func TestGetDiffInvalidRepo(t *testing.T) {
 	}
 }
 
+func TestGetFileAtRevision(t *testing.T) {
+	tmp_dir := setupTestRepo(t)
+
+	branch, err := GetCurrentBranch(tmp_dir)
+	if err != nil {
+		t.Fatalf("Failed to get branch: %v", err)
+	}
+
+	t.Run("existing file at revision", func(t *testing.T) {
+		given := "initial content\n"
+		actual, err := GetFileAtRevision(tmp_dir, branch, "test.txt")
+		if err != nil {
+			t.Fatalf("Failed to read file at revision: %v", err)
+		}
+		if actual != given {
+			t.Errorf("expected %q, got %q", given, actual)
+		}
+	})
+
+	t.Run("missing path at revision", func(t *testing.T) {
+		_, err := GetFileAtRevision(tmp_dir, branch, "nonexistent.txt")
+		if err == nil {
+			t.Error("expected error for missing path, got nil")
+		}
+	})
+}
+
 func TestGetUserName(t *testing.T) {
 	tmpDir := setupTestRepo(t)
 

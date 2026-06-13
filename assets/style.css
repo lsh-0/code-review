@@ -278,6 +278,24 @@ header {
     position: sticky;
     top: 0;
     z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.browse-link {
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: var(--color-accent);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+}
+
+.browse-link:hover {
+    background: var(--color-bg-subtle);
 }
 
 #current-file-name {
@@ -288,6 +306,16 @@ header {
 
 #diff-content {
     padding: 1rem 2rem;
+}
+
+.binary-placeholder {
+    padding: 2rem;
+    text-align: center;
+    color: var(--color-hunk-text);
+    font-family: var(--font-mono);
+    font-size: var(--diff-font-size);
+    border: 1px dashed var(--color-border);
+    border-radius: 6px;
 }
 
 .diff-hunk {
@@ -304,6 +332,54 @@ header {
     font-size: var(--diff-font-size);
     color: var(--color-hunk-text);
     border-bottom: 1px solid var(--color-border);
+}
+
+.expand-row {
+    background: var(--color-bg-subtle);
+    padding: 0.35rem 1rem;
+    font-family: var(--font-mono);
+    font-size: var(--diff-font-size);
+    color: var(--color-accent);
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.expand-row:hover {
+    background: var(--color-bg-tertiary);
+}
+
+.expand-row.disabled {
+    color: var(--color-text-muted);
+    text-decoration: line-through;
+    cursor: default;
+}
+
+.expand-row.disabled:hover {
+    background: var(--color-bg-subtle);
+}
+
+/* a between-hunks gap revealed to completion makes the two hunks continuous:
+   close the separating margin and flatten the bordered/rounded edges where
+   they meet so the two boxes read as one block. */
+.diff-hunk.joined-above {
+    margin-top: 0;
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+.diff-hunk.joined-below {
+    margin-bottom: 0;
+    border-bottom: none;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+/* the lower hunk's header is hidden once its gap is fully revealed: the two
+   hunks are now one continuous block and the @@ boundary no longer applies. */
+.hunk-header.joined-hidden {
+    display: none;
 }
 
 .diff-line {

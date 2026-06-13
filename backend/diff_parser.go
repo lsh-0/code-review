@@ -30,8 +30,9 @@ type DiffHunk struct {
 }
 
 type DiffFile struct {
-	Path  string
-	Hunks []DiffHunk
+	Path   string
+	Hunks  []DiffHunk
+	Binary bool
 }
 
 var (
@@ -64,6 +65,8 @@ func ParseDiff(diffText string) []DiffFile {
 				Path:  matches[2],
 				Hunks: []DiffHunk{},
 			}
+		} else if currentFile != nil && strings.HasPrefix(line, "Binary files ") {
+			currentFile.Binary = true
 		} else if currentFile != nil && hunkHeaderRegex.MatchString(line) {
 			if currentHunk != nil {
 				currentFile.Hunks = append(currentFile.Hunks, *currentHunk)

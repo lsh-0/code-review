@@ -26,6 +26,7 @@ type App struct {
 	dataDir   string
 	statePath string
 	diffFiles []DiffFile
+	fileCache *fileContentCache
 }
 
 func NewApp() *App {
@@ -88,6 +89,10 @@ func (a *App) startup(ctx context.Context) error {
 
 	a.diffFiles = ParseDiff(diffText)
 
+	a.fileCache = newFileContentCache(func(rev, path string) (string, error) {
+		return GetFileAtRevision(a.repoPath, rev, path)
+	})
+
 	for _, diffFile := range a.diffFiles {
 		if a.review.GetFileDiff(diffFile.Path) == nil {
 			a.review.AddFileDiff(diffFile.Path)
@@ -135,6 +140,45 @@ func (a *App) GetDiffFiles() (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// return a range of unchanged context lines for a file at the review's source
+// (head) revision, used to expand the visible window around a hunk. The range
+// [startNew, endNew] is inclusive and 1-based on new-file line numbers;
+// `oldOffset` maps each new line number to its old line number (old = new +
+// oldOffset). The result reports the requested lines alongside the file's
+// total line count, which the viewer needs to bound the trailing gap.
+func (a *App) GetFileLines(filePath string, startNew int, endNew int, oldOffset int) (string, error) {
+	body, err := a.fileCache.get(a.review.SourceBranch, filePath)
+	if err != nil {
+		return "", err
+	}
+
+	lines, err := fileLineRange(body, startNew, endNew, oldOffset)
+	if err != nil {
+		return "", err
+	}
+
+	result := struct {
+		Lines    []DiffLine `json:"Lines"`
+		TotalNew int        `json:"TotalNew"`
+	}{
+		Lines:    lines,
+		TotalNew: lineCount(body),
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// open a changed file in the OS-preferred application. The path is resolved
+// against the repository root and opened with `xdg-open`. This does not touch
+// review state; a failure to open is returned for the caller to report.
+func (a *App) BrowseFile(filePath string) error {
+	return OpenInPreferredApp(a.repoPath, filePath)
 }
 
 // a ready-to-paste prompt pointing a tool at the state file. The file's own

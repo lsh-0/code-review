@@ -43,8 +43,9 @@ func applyZoom() {
 }
 
 type DiffFile struct {
-	Path  string     `json:"Path"`
-	Hunks []DiffHunk `json:"Hunks"`
+	Path   string     `json:"Path"`
+	Hunks  []DiffHunk `json:"Hunks"`
+	Binary bool       `json:"Binary"`
 }
 
 type DiffHunk struct {
@@ -381,12 +382,59 @@ func selectFile(filePath string) {
 	}
 
 	doc.Call("getElementById", "current-file-name").Set("textContent", filePath)
+	renderBrowseLink(filePath)
 
 	refreshState(func() {
 		loadComments(filePath, func() {
 			renderDiff(filePath)
 		})
 	})
+}
+
+// render (or replace) a "browse" link in the file header that opens the
+// selected file in the OS-preferred application. A single `#browse-link`
+// element is reused across selections.
+func renderBrowseLink(filePath string) {
+	header := doc.Call("getElementById", "current-file-header")
+
+	existing := doc.Call("getElementById", "browse-link")
+	if existing != js.Undefined && existing != nil {
+		existing.Call("remove")
+	}
+
+	link := doc.Call("createElement", "button")
+	link.Call("setAttribute", "id", "browse-link")
+	link.Get("classList").Call("add", "browse-link")
+	link.Set("textContent", "browse")
+	link.Call("setAttribute", "title", "Open this file in the preferred application")
+	link.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		browseFile(filePath)
+		return nil
+	}))
+	header.Call("appendChild", link)
+}
+
+// open a file in the preferred application via the backend, reporting a
+// failure without altering review state.
+func browseFile(filePath string) {
+	backend := win.Get("go")
+	if backend == js.Undefined {
+		return
+	}
+
+	app := backend.Get("main").Get("App")
+	if app == js.Undefined {
+		return
+	}
+
+	promise := app.Call("BrowseFile", filePath)
+	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		return nil
+	}))
+	promise.Call("catch", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		win.Call("alert", "Could not open "+filePath)
+		return nil
+	}))
 }
 
 func loadComments(filePath string, callback func()) {
@@ -436,7 +484,20 @@ func renderDiff(filePath string) {
 	content := doc.Call("getElementById", "diff-content")
 	content.Set("innerHTML", "")
 
-	for _, hunk := range file.Hunks {
+	// binary files carry no hunks and must never have their blob fetched or
+	// rendered: show a plain placeholder and stop before any hunk or
+	// expansion work.
+	if file.Binary {
+		placeholder := doc.Call("createElement", "div")
+		placeholder.Get("classList").Call("add", "binary-placeholder")
+		placeholder.Set("textContent", "binary file")
+		content.Call("appendChild", placeholder)
+		return
+	}
+
+	for i := range file.Hunks {
+		hunk := file.Hunks[i]
+
 		hunkElem := doc.Call("createElement", "div")
 		hunkElem.Get("classList").Call("add", "diff-hunk")
 
@@ -444,21 +505,237 @@ func renderDiff(filePath string) {
 		header.Get("classList").Call("add", "hunk-header")
 		headerText := fmt.Sprintf("@@ -%d,%d +%d,%d @@", hunk.OldStart, hunk.OldLines, hunk.NewStart, hunk.NewLines)
 		header.Set("textContent", headerText)
+
+		// the gap above this hunk: between the previous hunk's last new line
+		// (or the start of the file) and this hunk's first new line. The
+		// upward affordance sits above the header so revealed gap lines land
+		// in file order between the affordance and the header; it shows
+		// disabled when there is nothing hidden above the hunk.
+		prevEnd := 0
+		if i > 0 {
+			prev := file.Hunks[i-1]
+			prevEnd = prev.NewStart + prev.NewLines - 1
+		}
+		betweenHunks := i > 0
+		addExpandAffordance(hunkElem, header, filePath, expandUp, hunk, hunk.NewStart-1, prevEnd+1, betweenHunks)
+
 		hunkElem.Call("appendChild", header)
 
 		for _, line := range hunk.Lines {
 			lineElem := createDiffLine(line, filePath)
 			hunkElem.Call("appendChild", lineElem)
+			appendCommentThread(hunkElem, filePath, line.NewLineNo)
+		}
 
-			comments := getCommentsForLine(filePath, line.NewLineNo)
-			if len(comments) > 0 {
-				thread := createCommentThread(filePath, comments)
-				hunkElem.Call("appendChild", thread)
-			}
+		// the gap below the last hunk extends to end-of-file. The total is not
+		// known until fetched, so the affordance is always rendered; the fetch
+		// disables it if no further lines exist.
+		if i == len(file.Hunks)-1 {
+			lastEnd := hunk.NewStart + hunk.NewLines - 1
+			addExpandAffordance(hunkElem, nil, filePath, expandDown, hunk, lastEnd+1, 0, false)
 		}
 
 		content.Call("appendChild", hunkElem)
 	}
+}
+
+const (
+	expandUp   = "up"
+	expandDown = "down"
+	expandStep = 20
+)
+
+// append a comment thread for `lineNo` to `parent` when comments exist there.
+func appendCommentThread(parent *js.Object, filePath string, lineNo int) {
+	comments := getCommentsForLine(filePath, lineNo)
+	if len(comments) > 0 {
+		parent.Call("appendChild", createCommentThread(filePath, comments))
+	}
+}
+
+// add an expansion affordance row to a hunk element. `direction` is `expandUp`
+// (reveal lines before the hunk, inserted just above the hunk `header`) or
+// `expandDown` (reveal lines after the hunk, appended to the hunk element).
+// `frontier` is the next hidden new-line number adjacent to the hunk;
+// `boundary` is the furthest hidden new line in the gap (0 for a trailing gap
+// whose end is unknown until fetched). `hunk` supplies the old/new offset for
+// revealed lines. The row is appended in render order: for an upward
+// affordance it is added before the header (so it sits at the top of the box),
+// for a downward affordance after the body (so it sits at the bottom).
+func addExpandAffordance(hunkElem, header *js.Object, filePath, direction string, hunk DiffHunk, frontier, boundary int, betweenHunks bool) {
+	row := doc.Call("createElement", "div")
+	row.Get("classList").Call("add", "expand-row")
+
+	label := "↑ expand " + fmt.Sprintf("%d", expandStep) + " lines"
+	if direction == expandDown {
+		label = "↓ expand " + fmt.Sprintf("%d", expandStep) + " lines"
+	}
+	row.Set("textContent", label)
+
+	oldOffset := hunk.OldStart - hunk.NewStart
+
+	// frontier moves as lines are revealed; captured by the click closure.
+	state := &expandState{frontier: frontier, boundary: boundary}
+
+	// an upward affordance with no hidden lines above is disabled from the
+	// start. The downward affordance starts enabled: its end-of-file boundary
+	// is only known after the first fetch.
+	if direction == expandUp && frontier < boundary {
+		disableExpandRow(row)
+	}
+
+	row.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		if row.Get("classList").Call("contains", "disabled").Bool() {
+			return nil
+		}
+		expandGap(row, hunkElem, header, filePath, direction, oldOffset, state, betweenHunks)
+		return nil
+	}))
+
+	hunkElem.Call("appendChild", row)
+}
+
+// mutable per-affordance state: the next hidden line adjacent to the hunk and
+// the furthest hidden line in the gap (0 = unknown trailing end).
+type expandState struct {
+	frontier int
+	boundary int
+}
+
+// request the next step of context lines from the backend and splice them
+// into the gap, then re-evaluate whether the affordance should remain.
+func expandGap(row, hunkElem, header *js.Object, filePath, direction string, oldOffset int, state *expandState, betweenHunks bool) {
+	backend := win.Get("go")
+	if backend == js.Undefined {
+		return
+	}
+	app := backend.Get("main").Get("App")
+	if app == js.Undefined {
+		return
+	}
+
+	startNew, endNew := stepRange(direction, state)
+
+	promise := app.Call("GetFileLines", filePath, startNew, endNew, oldOffset)
+	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		if len(args) == 0 || args[0] == js.Undefined {
+			return nil
+		}
+		var result struct {
+			Lines    []DiffLine `json:"Lines"`
+			TotalNew int        `json:"TotalNew"`
+		}
+		json.Unmarshal([]byte(args[0].String()), &result)
+		spliceRevealed(row, hunkElem, filePath, direction, result.Lines)
+		advanceState(direction, state, result.Lines, result.TotalNew)
+		if gapExhausted(direction, state) {
+			if betweenHunks && direction == expandUp {
+				// a fully revealed between-hunks gap makes the two hunks one
+				// continuous block: the row and this hunk's header no longer
+				// mark a boundary, so remove the row, hide the header, and drop
+				// the visual separation between the two boxes.
+				row.Call("remove")
+				header.Get("classList").Call("add", "joined-hidden")
+				hunkElem.Get("classList").Call("add", "joined-above")
+				prev := hunkElem.Get("previousElementSibling")
+				if prev != js.Undefined && prev != nil {
+					prev.Get("classList").Call("add", "joined-below")
+				}
+			} else {
+				// top-of-file or end-of-file gap exhausted: keep the row in
+				// place but disabled so navigation does not shift.
+				disableExpandRow(row)
+			}
+		}
+		return nil
+	}))
+	promise.Call("catch", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		// a failed range request (binary, missing path) disables the affordance
+		// rather than leaving a control that never works.
+		disableExpandRow(row)
+		return nil
+	}))
+}
+
+// mark an expansion affordance row disabled: it stays in place for stable
+// navigation but is struck through and ignores clicks.
+func disableExpandRow(row *js.Object) {
+	row.Get("classList").Call("add", "disabled")
+}
+
+// compute the inclusive new-line range to request for the next step in a
+// direction, clamped to the remaining gap.
+func stepRange(direction string, state *expandState) (int, int) {
+	if direction == expandUp {
+		endNew := state.frontier
+		startNew := endNew - expandStep + 1
+		if startNew < state.boundary {
+			startNew = state.boundary
+		}
+		return startNew, endNew
+	}
+	startNew := state.frontier
+	endNew := startNew + expandStep - 1
+	if state.boundary > 0 && endNew > state.boundary {
+		endNew = state.boundary
+	}
+	return startNew, endNew
+}
+
+// insert revealed lines (with their comment threads) into the gap in correct
+// file order. A document fragment preserves each block's ascending order in a
+// single insertion. For upward expansion the affordance row sits at the top of
+// the hunk box (above the header); each block is inserted just after the row,
+// so successive (further up the file, lower-numbered) blocks stack between the
+// row and earlier blocks, with the header and body below them — keeping the
+// whole region in order. For downward expansion the block is inserted before
+// the row, which stays at the bottom of the hunk.
+func spliceRevealed(row, hunkElem *js.Object, filePath, direction string, lines []DiffLine) {
+	fragment := doc.Call("createDocumentFragment")
+	for _, line := range lines {
+		fragment.Call("appendChild", createDiffLine(line, filePath))
+		thread := commentThreadOrNil(filePath, line.NewLineNo)
+		if thread != nil {
+			fragment.Call("appendChild", thread)
+		}
+	}
+
+	if direction == expandUp {
+		hunkElem.Call("insertBefore", fragment, row.Get("nextSibling"))
+		return
+	}
+	hunkElem.Call("insertBefore", fragment, row)
+}
+
+// build a comment thread element for a line, or nil when there are none.
+func commentThreadOrNil(filePath string, lineNo int) *js.Object {
+	comments := getCommentsForLine(filePath, lineNo)
+	if len(comments) == 0 {
+		return nil
+	}
+	return createCommentThread(filePath, comments)
+}
+
+// move the frontier toward the gap boundary by the number of revealed lines,
+// and learn the trailing boundary from the reported total on first fetch.
+func advanceState(direction string, state *expandState, lines []DiffLine, totalNew int) {
+	revealed := len(lines)
+	if direction == expandUp {
+		state.frontier -= revealed
+		return
+	}
+	state.frontier += revealed
+	if state.boundary == 0 {
+		state.boundary = totalNew
+	}
+}
+
+// report whether a gap has been fully revealed in the given direction.
+func gapExhausted(direction string, state *expandState) bool {
+	if direction == expandUp {
+		return state.frontier < state.boundary
+	}
+	return state.boundary > 0 && state.frontier > state.boundary
 }
 
 func createDiffLine(line DiffLine, filePath string) *js.Object {

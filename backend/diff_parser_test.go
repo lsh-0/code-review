@@ -1,8 +1,55 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
+
+// a diff with two hunks separated by a large unchanged gap: the second hunk
+// header must be parsed as a header, never captured as a content line. This
+// guards against the second `@@` leaking into a DiffLine's content.
+func TestParseDiffTwoHunksNoHeaderLeak(t *testing.T) {
+	given := "diff --git a/cmd/adl/main.go b/cmd/adl/main.go\n" +
+		"index 840dbde..cbf92ad 100644\n" +
+		"--- a/cmd/adl/main.go\n" +
+		"+++ b/cmd/adl/main.go\n" +
+		"@@ -21,6 +21,7 @@ import (\n" +
+		" \t\"adl/common\"\n" +
+		" \t\"adl/common/oidc\"\n" +
+		" \tmanagement_app \"adl/management/app\"\n" +
+		"+\tproduction_app \"adl/production/app\"\n" +
+		" \treview_app \"adl/review/app\"\n" +
+		" \tsubmit_app \"adl/submit/app\"\n" +
+		" \n" +
+		"@@ -91,6 +92,10 @@ func build_handler(deps handler_deps) (http.Handler, error) {\n" +
+		" \troot.Mount(\"/review\", review_handler)\n" +
+		" \n" +
+		"+\t// production API routes\n" +
+		" \t// top-level health check\n"
+
+	files := ParseDiff(given)
+
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(files))
+	}
+	if len(files[0].Hunks) != 2 {
+		t.Fatalf("expected 2 hunks, got %d", len(files[0].Hunks))
+	}
+
+	for hi, hunk := range files[0].Hunks {
+		for _, line := range hunk.Lines {
+			if strings.Contains(line.Content, "@@") {
+				t.Errorf("hunk %d: header leaked into a content line: %q", hi, line.Content)
+			}
+		}
+	}
+
+	second := files[0].Hunks[1]
+	if second.NewStart != 92 || second.OldStart != 91 {
+		t.Errorf("expected second hunk to start at old 91 / new 92, got old %d / new %d",
+			second.OldStart, second.NewStart)
+	}
+}
 
 func TestParseDiff(t *testing.T) {
 	diffText := `diff --git a/file1.go b/file1.go
@@ -141,6 +188,46 @@ index abc123..def456 100644
 
 	if hunk.Lines[2].Content != "removed line" {
 		t.Errorf("Expected 'removed line', got '%s'", hunk.Lines[2].Content)
+	}
+}
+
+func TestParseDiffBinaryFile(t *testing.T) {
+	given := `diff --git a/text.go b/text.go
+index abc123..def456 100644
+--- a/text.go
++++ b/text.go
+@@ -1,2 +1,3 @@
+ package main
++import "fmt"
+ func main() {
+diff --git a/image.png b/image.png
+index 0de32cd..e2d5c72 100644
+Binary files a/image.png and b/image.png differ
+`
+
+	files := ParseDiff(given)
+
+	if len(files) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(files))
+	}
+
+	text := files[0]
+	if text.Binary {
+		t.Errorf("expected text.go not to be binary")
+	}
+	if len(text.Hunks) != 1 {
+		t.Errorf("expected text.go to have 1 hunk, got %d", len(text.Hunks))
+	}
+
+	binary := files[1]
+	if binary.Path != "image.png" {
+		t.Errorf("expected second file 'image.png', got %q", binary.Path)
+	}
+	if !binary.Binary {
+		t.Errorf("expected image.png to be flagged binary")
+	}
+	if len(binary.Hunks) != 0 {
+		t.Errorf("expected image.png to have 0 hunks, got %d", len(binary.Hunks))
 	}
 }
 

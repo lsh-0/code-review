@@ -51,6 +51,21 @@ func GetDiff(repoPath, baseBranch, headBranch string) (string, error) {
 	return string(output), nil
 }
 
+// read the full content of a file at a given revision via `git show
+// <rev>:<path>`. Returns an error when the path does not exist at that
+// revision, or when the entry is not a readable blob.
+func GetFileAtRevision(repoPath, rev, path string) (string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "show", rev+":"+path)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return "", fmt.Errorf("failed to read %s at %s: %w (stderr: %s)", path, rev, err, string(exitErr.Stderr))
+		}
+		return "", fmt.Errorf("failed to read %s at %s: %w", path, rev, err)
+	}
+	return string(output), nil
+}
+
 func GetUserName(repoPath string) (string, error) {
 	cmd := exec.Command("git", "-C", repoPath, "config", "user.name")
 	output, err := cmd.Output()

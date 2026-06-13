@@ -32,15 +32,6 @@ just one; and the diff click/scroll handlers that assume a single
 current file need auditing. Decide whether the selection set persists in
 review state or is view-only.
 ---
-title: Expand diff context to show more surrounding file
-added: 2026-06-12
-effort: medium
-tags: frontend, ui
-summary: Let the viewer grow a hunk's visible window to reveal more of the unchanged file around a snippet, for better context
-
-Misses GitHub's expandable diff context — the control that grows the
-window to expose hidden surrounding lines.
----
 title: Import review feedback from Bitbucket and GitHub
 added: 2026-06-12
 effort: high
