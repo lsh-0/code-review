@@ -80,12 +80,24 @@ func (a *App) startup(ctx context.Context) error {
 		}
 	}
 
+	fmt.Println("state:", a.statePath)
+
+	if err := a.loadDiff(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// compute the diff between the review's branches, parse it into `diffFiles`,
+// reset the file-content cache (its bodies belong to the previous diff), and
+// ensure every changed file has a `FileDiff` entry in the review. Called at
+// startup and again on refresh so newly committed files appear.
+func (a *App) loadDiff() error {
 	diffText, err := GetDiff(a.repoPath, a.review.TargetBranch, a.review.SourceBranch)
 	if err != nil {
 		return fmt.Errorf("failed to get diff: %w", err)
 	}
-
-	fmt.Println("state:", a.statePath)
 
 	a.diffFiles = ParseDiff(diffText)
 
@@ -108,7 +120,8 @@ func (a *App) RefreshState() error {
 		return fmt.Errorf("failed to reload state: %w", err)
 	}
 	a.review = review
-	return nil
+
+	return a.loadDiff()
 }
 
 func (a *App) GetReviewInfo() (string, error) {

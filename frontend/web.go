@@ -154,7 +154,10 @@ func loadAllComments(callback func()) {
 	}
 }
 
-func loadDiffFiles() {
+// fetch the parsed diff into `diffFiles`, then load comments and marked files,
+// then invoke `callback`. Used both for the initial load and on refresh, so the
+// file list reflects newly committed files.
+func loadDiffFiles(callback func()) {
 	backend := win.Get("go")
 	if backend == js.Undefined {
 		return
@@ -172,7 +175,7 @@ func loadDiffFiles() {
 			json.Unmarshal([]byte(filesJSON), &diffFiles)
 			loadAllComments(func() {
 				loadMarkedFiles(func() {
-					renderFileList()
+					callback()
 				})
 			})
 		}
@@ -1212,13 +1215,11 @@ func setupEventHandlers() {
 
 	doc.Call("getElementById", "refresh-btn").Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		refreshState(func() {
-			loadAllComments(func() {
-				loadMarkedFiles(func() {
-					renderFileList()
-					if currentFile != "" {
-						renderDiff(currentFile)
-					}
-				})
+			loadDiffFiles(func() {
+				renderFileList()
+				if currentFile != "" {
+					renderDiff(currentFile)
+				}
 			})
 		})
 		return nil
@@ -1335,7 +1336,9 @@ func initialize() {
 	commentsCache = make(map[string][]*model.Comment)
 
 	loadReviewInfo()
-	loadDiffFiles()
+	loadDiffFiles(func() {
+		renderFileList()
+	})
 	setupEventHandlers()
 }
 
