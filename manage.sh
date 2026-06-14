@@ -64,10 +64,9 @@ cmd_release() {
     cmd_gopher_build
 
     echo ""
-    read -p "Enter version (required): " version_input
+    read -p "Enter version [unreleased]: " version_input
     if [ -z "$version_input" ]; then
-        echo "Error: Version is required for release builds"
-        exit 1
+        version_input="unreleased"
     fi
 
     echo "Building Wails application for release (version: $version_input)..."
