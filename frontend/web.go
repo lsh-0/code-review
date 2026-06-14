@@ -1213,10 +1213,12 @@ func setupEventHandlers() {
 	doc.Call("getElementById", "refresh-btn").Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		refreshState(func() {
 			loadAllComments(func() {
-				renderFileList()
-				if currentFile != "" {
-					renderDiff(currentFile)
-				}
+				loadMarkedFiles(func() {
+					renderFileList()
+					if currentFile != "" {
+						renderDiff(currentFile)
+					}
+				})
 			})
 		})
 		return nil
