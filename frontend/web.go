@@ -365,6 +365,15 @@ func refreshState(callback func()) {
 }
 
 func selectFile(filePath string) {
+	// re-selecting the current file is a no-op: re-rendering would reset the
+	// scroll position and discard expanded context, making it look like a fresh
+	// page load when the viewer has not moved. The double-click-to-mark flow
+	// relies on this — its leading single clicks land here and must not disturb
+	// the view. The dblclick handler toggles the checkbox independently.
+	if filePath == currentFile {
+		return
+	}
+
 	currentFile = filePath
 
 	diffView := doc.Call("getElementById", "diff-view")

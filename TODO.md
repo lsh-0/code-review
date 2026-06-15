@@ -83,16 +83,6 @@ Adding a comment re-renders the diff, dropping expanded lines and other
 page state, so the viewport jumps. The expand-context feature made this
 more noticeable.
 ---
-title: Disable the bottom "expand 20 lines" when a file ends at the last hunk
-added: 2026-06-13
-effort: low
-tags: frontend, ui
-summary: The end-of-file expand control renders enabled even with nothing below, only disabling itself after a click
-
-The top affordance disables correctly, but the bottom one starts enabled
-because end-of-file is only learned after the first fetch. It should be
-disabled up front when there is nothing to reveal.
----
 title: Add a right-click context menu
 added: 2026-06-13
 effort: medium
@@ -176,15 +166,6 @@ and re-parse, so each click now pays a synchronous subprocess — the
 likely cause of the pause on first body display. State-reread-on-select
 should reload only review state (comments/marks); the diff recompute
 belongs on the explicit refresh button.
----
-title: Don't reset scroll when clicking the already-selected file
-added: 2026-06-14
-effort: low
-tags: frontend, ui
-summary: Re-clicking the file you're already viewing re-renders the diff and resets scroll, mimicking a fresh page load when you're on the same page
-
-Clicking a file's name should be a no-op when it's already the current
-file, leaving scroll position untouched.
 ---
 title: Move file selection with up/down arrow keys
 added: 2026-06-14
