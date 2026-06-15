@@ -60,6 +60,29 @@ func TestSaveAndLoadReview(t *testing.T) {
 	}
 }
 
+func TestSaveReviewStampsEmbeddedReadme(t *testing.T) {
+	given := model.NewReview("/repo", "feature", "main")
+	statePath := filepath.Join(t.TempDir(), "review_state.json")
+
+	if err := SaveReview(statePath, given); err != nil {
+		t.Fatalf("Failed to save review: %v", err)
+	}
+
+	loaded, err := LoadReview(statePath)
+	if err != nil {
+		t.Fatalf("Failed to load review: %v", err)
+	}
+
+	expected := statefileUsage
+	if loaded.Readme != expected {
+		t.Errorf("Expected _readme stamped from embedded readme.md, got %q", loaded.Readme)
+	}
+
+	if !strings.Contains(loaded.Readme, "code-review state file") {
+		t.Errorf("Embedded readme.md appears empty or wrong: %q", loaded.Readme)
+	}
+}
+
 func TestLoadReviewNonExistent(t *testing.T) {
 	_, err := LoadReview("/nonexistent/file.json")
 	if err == nil {

@@ -118,16 +118,6 @@ Surfaced on the overview page alongside code comments. Same
 resolve/ignore status and replies, just no line anchor. Needs state
 schema changes and an update to the `_readme` review instructions.
 ---
-title: Move review instructions into a markdown file
-added: 2026-06-14
-effort: low
-tags: backend, model, docs
-summary: Keep the review instructions as a markdown file, read in and stamped into the state file's `_readme` field
-
-The instructions currently live as a hard-coded string constant. A
-markdown file would be easier to edit and read; the build/runtime would
-load it into the `_readme` field rather than embedding the prose inline.
----
 title: Tighten the automated-review protocol, possibly via a CLI
 added: 2026-06-14
 effort: high
