@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Replies are now first-class comments: each carries a parent reference and gains the same edit and delete actions as
+  top-level comments.
+  - Replies are stored flat in the state file with a `parent_id`; existing state files lose their old nested replies.
+- The state file's `_readme` instructions now describe the full review-handling policy, including telling an AI agent to
+  unmark any file it changes so the reviewer can see what needs revisiting.
+- Refreshing a review reloads marked files and recomputes the diff, so newly committed files appear without restarting.
+- Comment input text enlarged for readability.
+- Release builds default to an "unreleased" version when none is supplied.
+
+### Fixed
+
+- The bottom "expand 20 lines" control is disabled up front when a hunk already reaches the end of the file, instead of
+  only after a click reveals there is nothing below.
+- Re-clicking the file already being viewed no longer re-renders the diff and resets the scroll position.
+
 ## [0.5.0] - 2026-06-13
 
 ### Added

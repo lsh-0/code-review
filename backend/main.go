@@ -271,12 +271,11 @@ func (a *App) AddReply(filePath string, commentID string, content string) error 
 		return fmt.Errorf("file not found: %s", filePath)
 	}
 
-	comment := fileDiff.GetComment(commentID)
-	if comment == nil {
+	if fileDiff.GetComment(commentID) == nil {
 		return fmt.Errorf("comment not found: %s", commentID)
 	}
 
-	comment.AddReply(content, a.userName)
+	fileDiff.AddReply(commentID, content, a.userName)
 
 	return SaveReview(a.statePath, a.review)
 }

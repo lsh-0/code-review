@@ -13,17 +13,13 @@ const (
 	CommentStatusIgnored  CommentStatus = "ignored"
 )
 
-// Reply is a child note under a root Comment. Replies form a flat,
-// sequential thread; they carry no status of their own and cannot nest
-// further. Only the root comment is resolvable.
-type Reply struct {
-	ID      string `json:"id"`
-	Author  string `json:"author"`
-	Content string `json:"content"`
-}
-
+// A Comment is a review note against a line of the diff. A reply is just a
+// Comment whose ParentID is the id of the comment it answers; a root comment
+// has an empty ParentID. Replies form a flat thread under their root and are
+// not themselves resolvable: only root comments carry a meaningful status.
 type Comment struct {
 	ID            string        `json:"id"`
+	ParentID      string        `json:"parent_id,omitempty"`
 	Author        string        `json:"author"`
 	Content       string        `json:"content"`
 	LineNumber    int           `json:"line_number"`
@@ -31,7 +27,6 @@ type Comment struct {
 	ContextBefore string        `json:"context_before"`
 	ContextLine   string        `json:"context_line"`
 	ContextAfter  string        `json:"context_after"`
-	Replies       []*Reply      `json:"replies,omitempty"`
 }
 
 type FileDiff struct {
@@ -94,21 +89,6 @@ func (c *Comment) UpdateContent(content string) {
 	c.Content = content
 }
 
-func NewReply(content string, author string) *Reply {
-	return &Reply{
-		ID:      GenerateID(),
-		Author:  author,
-		Content: content,
-	}
-}
-
-// append a child reply to the comment's flat reply thread.
-func (c *Comment) AddReply(content string, author string) *Reply {
-	reply := NewReply(content, author)
-	c.Replies = append(c.Replies, reply)
-	return reply
-}
-
 func NewFileDiff(filePath string) *FileDiff {
 	return &FileDiff{
 		FilePath: filePath,
@@ -128,6 +108,21 @@ func (f *FileDiff) AddCommentWithContext(content string, lineNumber int, author 
 	return comment
 }
 
+// add a reply to `parentID` as a flat child comment. The thread stays flat:
+// when replying to a reply, the new reply attaches to the same root, so a
+// reply never becomes a grandchild. A reply carries no line number or context.
+func (f *FileDiff) AddReply(parentID string, content string, author string) *Comment {
+	root := parentID
+	if parent := f.GetComment(parentID); parent != nil && parent.ParentID != "" {
+		root = parent.ParentID
+	}
+
+	reply := NewComment(content, 0, author)
+	reply.ParentID = root
+	f.Comments = append(f.Comments, reply)
+	return reply
+}
+
 func (f *FileDiff) GetComment(commentID string) *Comment {
 	for _, comment := range f.Comments {
 		if comment.ID == commentID {
@@ -137,13 +132,17 @@ func (f *FileDiff) GetComment(commentID string) *Comment {
 	return nil
 }
 
+// delete a comment by id. Deleting a root comment also deletes every reply
+// whose `ParentID` points at it, so a removed thread leaves no orphans.
 func (f *FileDiff) DeleteComment(commentID string) {
-	for i, comment := range f.Comments {
-		if comment.ID == commentID {
-			f.Comments = append(f.Comments[:i], f.Comments[i+1:]...)
-			return
+	kept := f.Comments[:0]
+	for _, comment := range f.Comments {
+		if comment.ID == commentID || comment.ParentID == commentID {
+			continue
 		}
+		kept = append(kept, comment)
 	}
+	f.Comments = kept
 }
 
 func (f *FileDiff) GetCommentsByLine(lineNumber int) []*Comment {

@@ -238,8 +238,15 @@ func getFileCommentStatus(filePath string) string {
 	hasActive := false
 	hasIgnored := false
 	allResolved := true
+	rootCount := 0
 
 	for _, comment := range comments {
+		// replies carry no meaningful status; only root comments determine the
+		// file's aggregate state.
+		if comment.ParentID != "" {
+			continue
+		}
+		rootCount++
 		if comment.Status == model.CommentStatusActive {
 			hasActive = true
 			allResolved = false
@@ -254,7 +261,7 @@ func getFileCommentStatus(filePath string) string {
 	if hasActive {
 		return "active"
 	}
-	if allResolved && len(comments) > 0 {
+	if allResolved && rootCount > 0 {
 		return "resolved"
 	}
 	if hasIgnored {
@@ -827,7 +834,25 @@ func getCommentsForLine(filePath string, lineNumber int) []*model.Comment {
 
 	result := []*model.Comment{}
 	for _, comment := range comments {
-		if comment.LineNumber == lineNumber {
+		// replies (ParentID set) are rendered under their root, not against a
+		// line; a line thread is built only from root comments.
+		if comment.ParentID == "" && comment.LineNumber == lineNumber {
+			result = append(result, comment)
+		}
+	}
+	return result
+}
+
+// collect the replies whose `ParentID` is `parentID`, in stored order.
+func getReplies(filePath string, parentID string) []*model.Comment {
+	comments, ok := commentsCache[filePath]
+	if !ok {
+		return nil
+	}
+
+	result := []*model.Comment{}
+	for _, comment := range comments {
+		if comment.ParentID == parentID {
 			result = append(result, comment)
 		}
 	}
@@ -846,18 +871,46 @@ func createCommentThread(filePath string, comments []*model.Comment) *js.Object 
 	return thread
 }
 
+// build a comment-actions button with a label, optional extra css class, and
+// click handler.
+func actionButton(label string, cssClass string, onClick func()) *js.Object {
+	btn := doc.Call("createElement", "button")
+	btn.Set("textContent", label)
+	if cssClass != "" {
+		btn.Get("classList").Call("add", cssClass)
+	}
+	btn.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		onClick()
+		return nil
+	}))
+	return btn
+}
+
+// render a comment (root or reply) with full edit/delete/reply parity. A reply
+// is a comment whose `ParentID` is set: it is styled as a reply, omits the
+// status badge, and offers no resolve/ignore/reactivate actions because only
+// root comments carry a meaningful status. Replies are rendered after the
+// content, nested by `parent_id`.
 func createCommentElement(filePath string, comment *model.Comment) *js.Object {
+	isReply := comment.ParentID != ""
+	commentID := comment.ID
+
 	elem := doc.Call("createElement", "div")
 	elem.Get("classList").Call("add", "comment")
+	if isReply {
+		elem.Get("classList").Call("add", "comment-reply")
+	}
 
 	header := doc.Call("createElement", "div")
 	header.Get("classList").Call("add", "comment-header")
 
-	status := doc.Call("createElement", "span")
-	status.Get("classList").Call("add", "comment-status")
-	status.Get("classList").Call("add", string(comment.Status))
-	status.Set("textContent", string(comment.Status))
-	header.Call("appendChild", status)
+	if !isReply {
+		status := doc.Call("createElement", "span")
+		status.Get("classList").Call("add", "comment-status")
+		status.Get("classList").Call("add", string(comment.Status))
+		status.Set("textContent", string(comment.Status))
+		header.Call("appendChild", status)
+	}
 
 	if comment.Author != "" && comment.Author != currentUser {
 		author := doc.Call("createElement", "span")
@@ -873,94 +926,53 @@ func createCommentElement(filePath string, comment *model.Comment) *js.Object {
 	content.Set("textContent", comment.Content)
 	elem.Call("appendChild", content)
 
-	if len(comment.Replies) > 0 {
-		replies := doc.Call("createElement", "div")
-		replies.Get("classList").Call("add", "comment-replies")
-		for _, reply := range comment.Replies {
-			replies.Call("appendChild", createReplyElement(reply))
+	if !isReply {
+		replies := getReplies(filePath, commentID)
+		if len(replies) > 0 {
+			repliesElem := doc.Call("createElement", "div")
+			repliesElem.Get("classList").Call("add", "comment-replies")
+			for _, reply := range replies {
+				repliesElem.Call("appendChild", createCommentElement(filePath, reply))
+			}
+			elem.Call("appendChild", repliesElem)
 		}
-		elem.Call("appendChild", replies)
 	}
 
 	actions := doc.Call("createElement", "div")
 	actions.Get("classList").Call("add", "comment-actions")
 
-	commentID := comment.ID
-
-	replyBtn := doc.Call("createElement", "button")
-	replyBtn.Set("textContent", "Reply")
-	replyBtn.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		showReplyModal(filePath, commentID)
-		return nil
-	}))
-	actions.Call("appendChild", replyBtn)
-
-	editBtn := doc.Call("createElement", "button")
-	editBtn.Set("textContent", "Edit")
-	editBtn.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+	// Reply applies only to root comments: the thread is flat, so a reply has
+	// nothing to nest under it. Replies get edit/delete parity but no status
+	// actions, since only root comments carry a meaningful status.
+	if !isReply {
+		actions.Call("appendChild", actionButton("Reply", "", func() {
+			showReplyModal(filePath, commentID)
+		}))
+	}
+	actions.Call("appendChild", actionButton("Edit", "", func() {
 		showEditCommentModal(filePath, commentID, comment.Content)
-		return nil
 	}))
-	actions.Call("appendChild", editBtn)
 
-	if comment.Status == model.CommentStatusActive {
-		resolveBtn := doc.Call("createElement", "button")
-		resolveBtn.Set("textContent", "Resolve")
-		resolveBtn.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-			resolveComment(filePath, commentID)
-			return nil
-		}))
-		actions.Call("appendChild", resolveBtn)
-
-		ignoreBtn := doc.Call("createElement", "button")
-		ignoreBtn.Set("textContent", "Ignore")
-		ignoreBtn.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-			ignoreComment(filePath, commentID)
-			return nil
-		}))
-		actions.Call("appendChild", ignoreBtn)
-	} else {
-		reactivateBtn := doc.Call("createElement", "button")
-		reactivateBtn.Set("textContent", "Reactivate")
-		reactivateBtn.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-			reactivateComment(filePath, commentID)
-			return nil
-		}))
-		actions.Call("appendChild", reactivateBtn)
+	if !isReply {
+		if comment.Status == model.CommentStatusActive {
+			actions.Call("appendChild", actionButton("Resolve", "", func() {
+				resolveComment(filePath, commentID)
+			}))
+			actions.Call("appendChild", actionButton("Ignore", "", func() {
+				ignoreComment(filePath, commentID)
+			}))
+		} else {
+			actions.Call("appendChild", actionButton("Reactivate", "", func() {
+				reactivateComment(filePath, commentID)
+			}))
+		}
 	}
 
-	deleteBtn := doc.Call("createElement", "button")
-	deleteBtn.Get("classList").Call("add", "delete-btn")
-	deleteBtn.Set("textContent", "Delete")
-	deleteBtn.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+	actions.Call("appendChild", actionButton("Delete", "delete-btn", func() {
 		deleteComment(filePath, commentID)
-		return nil
 	}))
-	actions.Call("appendChild", deleteBtn)
 
 	elem.Call("appendChild", actions)
-
-	return elem
-}
-
-func createReplyElement(reply *model.Reply) *js.Object {
-	elem := doc.Call("createElement", "div")
-	elem.Get("classList").Call("add", "comment-reply")
-
-	if reply.Author != "" && reply.Author != currentUser {
-		header := doc.Call("createElement", "div")
-		header.Get("classList").Call("add", "comment-header")
-		author := doc.Call("createElement", "span")
-		author.Get("classList").Call("add", "comment-author")
-		author.Set("textContent", "("+reply.Author+")")
-		header.Call("appendChild", author)
-		elem.Call("appendChild", header)
-	}
-
-	content := doc.Call("createElement", "div")
-	content.Get("classList").Call("add", "comment-content")
-	content.Set("textContent", reply.Content)
-	elem.Call("appendChild", content)
 
 	return elem
 }

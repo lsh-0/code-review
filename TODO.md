@@ -64,15 +64,6 @@ Distribution today assumes a local build. An AppImage covers x86_64
 users without a toolchain; ARM support needs investigation because of
 the GopherJS/webkit constraints.
 ---
-title: Give child comments parity with parent comments
-added: 2026-06-13
-effort: medium
-tags: frontend, ui, comments
-summary: Render replies more like top-level comments, including edit and delete buttons
-
-Replies currently render as a lighter-weight thread; they should gain
-the same affordances as parent comments, notably edit and delete.
----
 title: Preserve page state when adding a comment
 added: 2026-06-13
 effort: medium

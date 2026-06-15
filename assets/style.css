@@ -575,8 +575,15 @@ header {
     padding-left: 0.75rem;
 }
 
+/* a reply is nested under its root inside the `.comment-replies` rail, so it
+   drops the standalone card chrome (border, background, radius) the root
+   `.comment` rule applies and reads as a lighter thread entry. */
 .comment-reply {
+    background: none;
+    border: none;
+    border-radius: 0;
     padding: 0.4rem 0;
+    margin-bottom: 0;
 }
 
 .comment-reply + .comment-reply {
@@ -584,7 +591,13 @@ header {
 }
 
 .comment-reply .comment-content {
-    margin-bottom: 0;
+    margin-bottom: 0.4rem;
+}
+
+/* replies offer only Edit and Delete; keep them grouped together rather than
+   pushing Delete to the far edge as the richer root action row does. */
+.comment-reply .comment-actions .delete-btn {
+    margin-left: 0;
 }
 
 .comment-actions {

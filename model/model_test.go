@@ -379,64 +379,101 @@ func TestReviewIsFileMarkedUnknown(t *testing.T) {
 	}
 }
 
-func TestNewReply(t *testing.T) {
-	given := NewReply("a reply", "Test User")
+func TestAddReplyCreatesChildComment(t *testing.T) {
+	given := NewFileDiff("test.go")
+	root := given.AddComment("root", 5, "Test User")
 
-	if given.Content != "a reply" {
-		t.Errorf("Expected content 'a reply', got '%s'", given.Content)
+	reply := given.AddReply(root.ID, "a reply", "Test User")
+
+	if reply.ParentID != root.ID {
+		t.Errorf("Expected reply ParentID '%s', got '%s'", root.ID, reply.ParentID)
 	}
-
-	if given.Author != "Test User" {
-		t.Errorf("Expected author 'Test User', got '%s'", given.Author)
+	if reply.Content != "a reply" {
+		t.Errorf("Expected content 'a reply', got '%s'", reply.Content)
 	}
-
-	if given.ID == "" {
+	if reply.ID == "" {
 		t.Error("Expected a generated ID, got empty string")
 	}
-}
 
-func TestCommentAddReply(t *testing.T) {
-	given := NewComment("root", 5, "Test User")
-
-	reply := given.AddReply("first reply", "Test User")
-
-	expected := 1
-	actual := len(given.Replies)
+	// the reply is stored flat alongside the root.
+	expected := 2
+	actual := len(given.Comments)
 	if actual != expected {
-		t.Errorf("Expected %d reply, got %d", expected, actual)
-	}
-
-	if given.Replies[0] != reply {
-		t.Error("Expected returned reply to be in the replies list")
+		t.Errorf("Expected %d comments stored flat, got %d", expected, actual)
 	}
 }
 
-func TestCommentAddReplyPreservesOrder(t *testing.T) {
-	given := NewComment("root", 5, "Test User")
+func TestAddReplyPreservesOrder(t *testing.T) {
+	given := NewFileDiff("test.go")
+	root := given.AddComment("root", 5, "Test User")
 
-	given.AddReply("first", "Test User")
-	given.AddReply("second", "Test User")
-	given.AddReply("third", "Test User")
+	given.AddReply(root.ID, "first", "Test User")
+	given.AddReply(root.ID, "second", "Test User")
+	given.AddReply(root.ID, "third", "Test User")
 
 	expected := []string{"first", "second", "third"}
+	actual := []string{}
+	for _, comment := range given.Comments {
+		if comment.ParentID == root.ID {
+			actual = append(actual, comment.Content)
+		}
+	}
+
+	if len(actual) != len(expected) {
+		t.Fatalf("Expected %d replies, got %d", len(expected), len(actual))
+	}
 	for i, want := range expected {
-		actual := given.Replies[i].Content
-		if actual != want {
-			t.Errorf("Reply %d: got '%s', want '%s'", i, actual, want)
+		if actual[i] != want {
+			t.Errorf("Reply %d: got '%s', want '%s'", i, actual[i], want)
 		}
 	}
 }
 
-func TestCommentRepliesIndependentOfStatus(t *testing.T) {
-	given := NewComment("root", 5, "Test User")
-	given.AddReply("a reply", "Test User")
+func TestAddReplyToReplyAttachesToRoot(t *testing.T) {
+	given := NewFileDiff("test.go")
+	root := given.AddComment("root", 5, "Test User")
+	reply := given.AddReply(root.ID, "first reply", "Test User")
 
-	given.Resolve()
+	// the thread stays flat: a reply to a reply hangs off the same root.
+	nested := given.AddReply(reply.ID, "reply to a reply", "Test User")
 
-	// resolving the root comment must not disturb its replies.
-	expected := 1
-	actual := len(given.Replies)
+	expected := root.ID
+	actual := nested.ParentID
 	if actual != expected {
-		t.Errorf("Expected replies to survive resolve: got %d, want %d", actual, expected)
+		t.Errorf("Expected nested reply to attach to root '%s', got '%s'", expected, actual)
+	}
+}
+
+func TestDeleteRootCommentCascadesToReplies(t *testing.T) {
+	given := NewFileDiff("test.go")
+	root := given.AddComment("root", 5, "Test User")
+	given.AddReply(root.ID, "a reply", "Test User")
+	given.AddReply(root.ID, "another reply", "Test User")
+	survivor := given.AddComment("unrelated", 9, "Test User")
+
+	given.DeleteComment(root.ID)
+
+	expected := 1
+	actual := len(given.Comments)
+	if actual != expected {
+		t.Errorf("Expected only the unrelated comment to remain, got %d comments", actual)
+	}
+	if len(given.Comments) > 0 && given.Comments[0].ID != survivor.ID {
+		t.Error("Expected the unrelated comment to survive the cascade")
+	}
+}
+
+func TestDeleteReplyLeavesRoot(t *testing.T) {
+	given := NewFileDiff("test.go")
+	root := given.AddComment("root", 5, "Test User")
+	reply := given.AddReply(root.ID, "a reply", "Test User")
+
+	given.DeleteComment(reply.ID)
+
+	if given.GetComment(root.ID) == nil {
+		t.Error("Expected root comment to survive deletion of its reply")
+	}
+	if given.GetComment(reply.ID) != nil {
+		t.Error("Expected reply to be deleted")
 	}
 }
