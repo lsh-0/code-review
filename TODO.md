@@ -161,6 +161,7 @@ then confirming before applying project-wide.
 ---
 title: Review the refresh implementation
 added: 2026-06-14
+updated: 2026-06-15
 effort: medium
 tags: frontend, backend
 summary: Refresh has accreted fixes and feels hacky; review how it reloads state and rework it holistically
@@ -168,6 +169,13 @@ summary: Refresh has accreted fixes and feels hacky; review how it reloads state
 Refresh started as a partial reload and was patched repeatedly (marked
 files, then the diff/file list). Worth a deliberate pass over the whole
 refresh path rather than more piecemeal fixes.
+
+Concrete defect found: `selectFile` calls `RefreshState` on every file
+click, and commit `9e5311c` made `RefreshState` shell out to `git diff`
+and re-parse, so each click now pays a synchronous subprocess — the
+likely cause of the pause on first body display. State-reread-on-select
+should reload only review state (comments/marks); the diff recompute
+belongs on the explicit refresh button.
 ---
 title: Don't reset scroll when clicking the already-selected file
 added: 2026-06-14

@@ -79,6 +79,58 @@ func TestGetFileCommentStatus(t *testing.T) {
 	}
 }
 
+func TestTrailingContextLines(t *testing.T) {
+	added := DiffLine{Type: LineAdded}
+	context := DiffLine{Type: LineContext}
+	removed := DiffLine{Type: LineRemoved}
+
+	tests := []struct {
+		name     string
+		given    []DiffLine
+		expected int
+	}{
+		{
+			name:     "no lines",
+			given:    []DiffLine{},
+			expected: 0,
+		},
+		{
+			name:     "full trailing context",
+			given:    []DiffLine{added, context, context, context},
+			expected: 3,
+		},
+		{
+			name:     "short trailing context signals end-of-file",
+			given:    []DiffLine{added, context},
+			expected: 1,
+		},
+		{
+			name:     "change is the last line",
+			given:    []DiffLine{context, context, context, added},
+			expected: 0,
+		},
+		{
+			name:     "removed line breaks the trailing run",
+			given:    []DiffLine{added, removed, context, context},
+			expected: 2,
+		},
+		{
+			name:     "all context",
+			given:    []DiffLine{context, context},
+			expected: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := trailingContextLines(tt.given)
+			if actual != tt.expected {
+				t.Errorf("trailingContextLines() = %v, want %v", actual, tt.expected)
+			}
+		})
+	}
+}
+
 func TestGetFileCommentStatusNotInCache(t *testing.T) {
 	commentsCache = make(map[string][]*model.Comment)
 	result := getFileCommentStatus("nonexistent.go")

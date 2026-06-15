@@ -520,7 +520,7 @@ func renderDiff(filePath string) {
 			prevEnd = prev.NewStart + prev.NewLines - 1
 		}
 		betweenHunks := i > 0
-		addExpandAffordance(hunkElem, header, filePath, expandUp, hunk, hunk.NewStart-1, prevEnd+1, betweenHunks)
+		addExpandAffordance(hunkElem, header, filePath, expandUp, hunk, hunk.NewStart-1, prevEnd+1, betweenHunks, false)
 
 		hunkElem.Call("appendChild", header)
 
@@ -530,12 +530,15 @@ func renderDiff(filePath string) {
 			appendCommentThread(hunkElem, filePath, line.NewLineNo)
 		}
 
-		// the gap below the last hunk extends to end-of-file. The total is not
-		// known until fetched, so the affordance is always rendered; the fetch
-		// disables it if no further lines exist.
+		// the gap below the last hunk extends to end-of-file. The exact total is
+		// not known until fetched, but a last hunk whose trailing context is
+		// shorter than the diff context size already reached end-of-file, so the
+		// affordance is disabled up front; otherwise the first fetch disables it
+		// if no further lines exist.
 		if i == len(file.Hunks)-1 {
 			lastEnd := hunk.NewStart + hunk.NewLines - 1
-			addExpandAffordance(hunkElem, nil, filePath, expandDown, hunk, lastEnd+1, 0, false)
+			atEOF := trailingContextLines(hunk.Lines) < diffContextSize
+			addExpandAffordance(hunkElem, nil, filePath, expandDown, hunk, lastEnd+1, 0, false, atEOF)
 		}
 
 		content.Call("appendChild", hunkElem)
@@ -546,7 +549,25 @@ const (
 	expandUp   = "up"
 	expandDown = "down"
 	expandStep = 20
+
+	// the diff is generated with git's default of 3 trailing context lines, so
+	// a last hunk carrying fewer than this many reached end-of-file.
+	diffContextSize = 3
 )
+
+// count the unchanged context lines at the tail of a hunk. A last hunk whose
+// trailing context is shorter than `diffContextSize` reached end-of-file, so
+// nothing remains below it to reveal.
+func trailingContextLines(lines []DiffLine) int {
+	count := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		if lines[i].Type != LineContext {
+			break
+		}
+		count++
+	}
+	return count
+}
 
 // append a comment thread for `lineNo` to `parent` when comments exist there.
 func appendCommentThread(parent *js.Object, filePath string, lineNo int) {
@@ -565,7 +586,7 @@ func appendCommentThread(parent *js.Object, filePath string, lineNo int) {
 // revealed lines. The row is appended in render order: for an upward
 // affordance it is added before the header (so it sits at the top of the box),
 // for a downward affordance after the body (so it sits at the bottom).
-func addExpandAffordance(hunkElem, header *js.Object, filePath, direction string, hunk DiffHunk, frontier, boundary int, betweenHunks bool) {
+func addExpandAffordance(hunkElem, header *js.Object, filePath, direction string, hunk DiffHunk, frontier, boundary int, betweenHunks, startDisabled bool) {
 	row := doc.Call("createElement", "div")
 	row.Get("classList").Call("add", "expand-row")
 
@@ -581,9 +602,10 @@ func addExpandAffordance(hunkElem, header *js.Object, filePath, direction string
 	state := &expandState{frontier: frontier, boundary: boundary}
 
 	// an upward affordance with no hidden lines above is disabled from the
-	// start. The downward affordance starts enabled: its end-of-file boundary
-	// is only known after the first fetch.
-	if direction == expandUp && frontier < boundary {
+	// start. A downward affordance is disabled up front only when the caller
+	// already knows the last hunk reached end-of-file; otherwise it starts
+	// enabled because its boundary is learned on the first fetch.
+	if (direction == expandUp && frontier < boundary) || startDisabled {
 		disableExpandRow(row)
 	}
 
