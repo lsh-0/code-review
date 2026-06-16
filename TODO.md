@@ -157,3 +157,44 @@ summary: Up/down currently just scroll the file list; they should move the selec
 When navigating by keyboard, the file list should scroll to keep the
 selected file visible where possible.
 ---
+title: Make the scrollbar always-present and wider
+added: 2026-06-16
+effort: medium
+tags: frontend, ui
+summary: Investigate how much control we have over the scrollbar; want it always visible and wider, likely a WebKit styling concern
+
+The scrollbar behaves differently to the GTK scrollbars, suggesting it
+is WebKit-controlled rather than the system widget. Investigate how much
+styling control WebKit exposes.
+---
+title: Ctrl-z undo doesn't work in the add-comment modal
+added: 2026-06-16
+effort: medium
+tags: frontend, ui, comments
+summary: Pressing Ctrl-z while typing in the add-comment box does not undo the edit
+---
+title: Ctrl-f should search the page contents
+added: 2026-06-16
+effort: medium
+tags: frontend, ui
+summary: Pressing Ctrl-f does nothing; it should search the page for matches and highlight them
+---
+title: Unmark files changed by new commits on refresh
+added: 2026-06-16
+effort: medium
+tags: backend, frontend
+summary: On refresh, reconcile the marked-file list against new commits since the current view, dropping files that changed or were deleted
+
+When new commits land, a file the reviewer marked may have changed and
+needs revisiting, so it should drop off the marked list; deleted files
+should drop too. Newly added files simply never appear there.
+---
+title: Make the file-list/diff divider draggable to resize the panes
+added: 2026-06-16
+effort: medium
+tags: frontend, ui
+summary: The divider between the file list and the diff cannot be dragged; clicking and dragging it should resize the two panes
+
+The boundary between the file-list column and the diff pane is fixed.
+Dragging it should adjust how the horizontal space is split between them.
+---
