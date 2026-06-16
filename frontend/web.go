@@ -514,6 +514,7 @@ func renderDiff(filePath string) {
 		return
 	}
 
+	var prevHunkElem *js.Object
 	for i := range file.Hunks {
 		hunk := file.Hunks[i]
 
@@ -536,7 +537,21 @@ func renderDiff(filePath string) {
 			prevEnd = prev.NewStart + prev.NewLines - 1
 		}
 		betweenHunks := i > 0
-		addExpandAffordance(hunkElem, header, filePath, expandUp, hunk, hunk.NewStart-1, prevEnd+1, betweenHunks, false)
+		upState := addExpandAffordance(hunkElem, filePath, expandUp, hunk, hunk.NewStart-1, prevEnd+1, false)
+
+		// a between-hunk gap also gets a downward affordance on the previous
+		// hunk, so it can be revealed from above as well as below. The two
+		// controls are linked as siblings: each one's boundary is the other's
+		// live frontier, so they converge on the gap and meet in the middle.
+		// The upward control carries the lower hunk and header for the merge.
+		if betweenHunks && prevHunkElem != nil {
+			prevHunk := file.Hunks[i-1]
+			downState := addExpandAffordance(prevHunkElem, filePath, expandDown, prevHunk, prevEnd+1, hunk.NewStart-1, false)
+			upState.sibling = downState
+			downState.sibling = upState
+			upState.lowerHunk = hunkElem
+			upState.lowerHeader = header
+		}
 
 		hunkElem.Call("appendChild", header)
 
@@ -553,11 +568,12 @@ func renderDiff(filePath string) {
 		// if no further lines exist.
 		if i == len(file.Hunks)-1 {
 			lastEnd := hunk.NewStart + hunk.NewLines - 1
-			atEOF := trailingContextLines(hunk.Lines) < diffContextSize
-			addExpandAffordance(hunkElem, nil, filePath, expandDown, hunk, lastEnd+1, 0, false, atEOF)
+			atEOF := hunkReachedEOF(hunk.Lines)
+			addExpandAffordance(hunkElem, filePath, expandDown, hunk, lastEnd+1, 0, atEOF)
 		}
 
 		content.Call("appendChild", hunkElem)
+		prevHunkElem = hunkElem
 	}
 }
 
@@ -571,18 +587,32 @@ const (
 	diffContextSize = 3
 )
 
-// count the unchanged context lines at the tail of a hunk. A last hunk whose
-// trailing context is shorter than `diffContextSize` reached end-of-file, so
-// nothing remains below it to reveal.
-func trailingContextLines(lines []DiffLine) int {
-	count := 0
+// report whether a hunk reaches the end of the file on the new side, so the
+// downward expand control can be disabled up front with nothing below to
+// reveal.
+//
+// The signal is the trailing context run: git emits up to `diffContextSize`
+// unchanged lines after a hunk's last change, so a shorter run means the file
+// ended. This only holds when the hunk's last line is a real new-side line
+// (context or added). A hunk ending in removed lines says nothing about the
+// new side — those deletions exist only on the old side, and the new file may
+// continue well past the hunk — so it makes no end-of-file claim.
+func hunkReachedEOF(lines []DiffLine) bool {
+	if len(lines) == 0 {
+		return false
+	}
+	if lines[len(lines)-1].Type == LineRemoved {
+		return false
+	}
+
+	trailing := 0
 	for i := len(lines) - 1; i >= 0; i-- {
 		if lines[i].Type != LineContext {
 			break
 		}
-		count++
+		trailing++
 	}
-	return count
+	return trailing < diffContextSize
 }
 
 // append a comment thread for `lineNo` to `parent` when comments exist there.
@@ -593,16 +623,15 @@ func appendCommentThread(parent *js.Object, filePath string, lineNo int) {
 	}
 }
 
-// add an expansion affordance row to a hunk element. `direction` is `expandUp`
-// (reveal lines before the hunk, inserted just above the hunk `header`) or
-// `expandDown` (reveal lines after the hunk, appended to the hunk element).
-// `frontier` is the next hidden new-line number adjacent to the hunk;
-// `boundary` is the furthest hidden new line in the gap (0 for a trailing gap
-// whose end is unknown until fetched). `hunk` supplies the old/new offset for
-// revealed lines. The row is appended in render order: for an upward
-// affordance it is added before the header (so it sits at the top of the box),
-// for a downward affordance after the body (so it sits at the bottom).
-func addExpandAffordance(hunkElem, header *js.Object, filePath, direction string, hunk DiffHunk, frontier, boundary int, betweenHunks, startDisabled bool) {
+// add an expansion affordance row to a hunk element and return its state.
+// `direction` is `expandUp` (reveal lines before the hunk, inserted just above
+// the hunk header) or `expandDown` (reveal lines after the hunk, appended to
+// the hunk element). `frontier` is the next hidden new-line number adjacent to
+// the hunk; `boundary` is the furthest hidden new line in the gap (0 for a
+// trailing gap whose end is unknown until fetched). `hunk` supplies the old/new
+// offset for revealed lines. The returned state lets the caller link a
+// between-hunk gap's two converging affordances as siblings.
+func addExpandAffordance(hunkElem *js.Object, filePath, direction string, hunk DiffHunk, frontier, boundary int, startDisabled bool) *expandState {
 	row := doc.Call("createElement", "div")
 	row.Get("classList").Call("add", "expand-row")
 
@@ -615,13 +644,13 @@ func addExpandAffordance(hunkElem, header *js.Object, filePath, direction string
 	oldOffset := hunk.OldStart - hunk.NewStart
 
 	// frontier moves as lines are revealed; captured by the click closure.
-	state := &expandState{frontier: frontier, boundary: boundary}
+	state := &expandState{frontier: frontier, boundary: boundary, row: row}
 
-	// an upward affordance with no hidden lines above is disabled from the
-	// start. A downward affordance is disabled up front only when the caller
-	// already knows the last hunk reached end-of-file; otherwise it starts
-	// enabled because its boundary is learned on the first fetch.
-	if (direction == expandUp && frontier < boundary) || startDisabled {
+	// an affordance with no hidden lines in its gap is disabled from the start.
+	// A downward affordance whose boundary is unknown (0, an end-of-file gap
+	// learned on first fetch) starts enabled unless the caller already knows the
+	// hunk reached end-of-file.
+	if (direction == expandUp && frontier < boundary) || (direction == expandDown && boundary > 0 && frontier > boundary) || startDisabled {
 		disableExpandRow(row)
 	}
 
@@ -629,23 +658,48 @@ func addExpandAffordance(hunkElem, header *js.Object, filePath, direction string
 		if row.Get("classList").Call("contains", "disabled").Bool() {
 			return nil
 		}
-		expandGap(row, hunkElem, header, filePath, direction, oldOffset, state, betweenHunks)
+		expandGap(row, hunkElem, filePath, direction, oldOffset, state)
 		return nil
 	}))
 
 	hunkElem.Call("appendChild", row)
+	return state
 }
 
 // mutable per-affordance state: the next hidden line adjacent to the hunk and
 // the furthest hidden line in the gap (0 = unknown trailing end).
+//
+// A between-hunk gap has two affordances converging on it — a downward control
+// on the upper hunk and an upward control on the lower hunk. They are linked by
+// `sibling`: each one's live frontier is the other's true boundary, so as one
+// reveals lines the other's remaining gap shrinks, and they meet in the middle
+// without overshooting or double-revealing. `row` is the affordance's own DOM
+// row, so closing the gap can remove both controls.
 type expandState struct {
 	frontier int
 	boundary int
+	sibling  *expandState
+	row      *js.Object
+	// the upward affordance of a between-hunk gap records the lower hunk and its
+	// header, so the gap can merge the two hunks regardless of which of the two
+	// converging controls closed it.
+	lowerHunk   *js.Object
+	lowerHeader *js.Object
+}
+
+// the furthest hidden line this affordance may reveal toward. For a linked
+// between-hunk affordance that is the sibling's current frontier (they converge
+// on each other); otherwise it is the fixed gap boundary.
+func (s *expandState) effectiveBoundary() int {
+	if s.sibling != nil {
+		return s.sibling.frontier
+	}
+	return s.boundary
 }
 
 // request the next step of context lines from the backend and splice them
 // into the gap, then re-evaluate whether the affordance should remain.
-func expandGap(row, hunkElem, header *js.Object, filePath, direction string, oldOffset int, state *expandState, betweenHunks bool) {
+func expandGap(row, hunkElem *js.Object, filePath, direction string, oldOffset int, state *expandState) {
 	backend := win.Get("go")
 	if backend == js.Undefined {
 		return
@@ -670,18 +724,11 @@ func expandGap(row, hunkElem, header *js.Object, filePath, direction string, old
 		spliceRevealed(row, hunkElem, filePath, direction, result.Lines)
 		advanceState(direction, state, result.Lines, result.TotalNew)
 		if gapExhausted(direction, state) {
-			if betweenHunks && direction == expandUp {
-				// a fully revealed between-hunks gap makes the two hunks one
-				// continuous block: the row and this hunk's header no longer
-				// mark a boundary, so remove the row, hide the header, and drop
-				// the visual separation between the two boxes.
-				row.Call("remove")
-				header.Get("classList").Call("add", "joined-hidden")
-				hunkElem.Get("classList").Call("add", "joined-above")
-				prev := hunkElem.Get("previousElementSibling")
-				if prev != js.Undefined && prev != nil {
-					prev.Get("classList").Call("add", "joined-below")
-				}
+			if state.sibling != nil {
+				// a between-hunk gap, closed from either converging control:
+				// merge the two hunks into one continuous block and remove both
+				// controls.
+				mergeBetweenHunks(state)
 			} else {
 				// top-of-file or end-of-file gap exhausted: keep the row in
 				// place but disabled so navigation does not shift.
@@ -698,6 +745,35 @@ func expandGap(row, hunkElem, header *js.Object, filePath, direction string, old
 	}))
 }
 
+// merge the two hunks bracketing a fully revealed between-hunk gap into one
+// continuous block. `state` is either of the gap's two converging affordances;
+// the upward one carries the lower hunk and its header. Both affordance rows
+// are removed, the lower header is hidden, and the join classes drop the visual
+// separation between the two hunk boxes.
+func mergeBetweenHunks(state *expandState) {
+	up := state
+	if up.lowerHunk == js.Undefined || up.lowerHunk == nil {
+		up = state.sibling
+	}
+	if up == nil || up.lowerHunk == js.Undefined || up.lowerHunk == nil {
+		return
+	}
+
+	if state.row != js.Undefined && state.row != nil {
+		state.row.Call("remove")
+	}
+	if state.sibling != nil && state.sibling.row != js.Undefined && state.sibling.row != nil {
+		state.sibling.row.Call("remove")
+	}
+
+	up.lowerHeader.Get("classList").Call("add", "joined-hidden")
+	up.lowerHunk.Get("classList").Call("add", "joined-above")
+	prev := up.lowerHunk.Get("previousElementSibling")
+	if prev != js.Undefined && prev != nil {
+		prev.Get("classList").Call("add", "joined-below")
+	}
+}
+
 // mark an expansion affordance row disabled: it stays in place for stable
 // navigation but is struck through and ignores clicks.
 func disableExpandRow(row *js.Object) {
@@ -707,18 +783,19 @@ func disableExpandRow(row *js.Object) {
 // compute the inclusive new-line range to request for the next step in a
 // direction, clamped to the remaining gap.
 func stepRange(direction string, state *expandState) (int, int) {
+	boundary := state.effectiveBoundary()
 	if direction == expandUp {
 		endNew := state.frontier
 		startNew := endNew - expandStep + 1
-		if startNew < state.boundary {
-			startNew = state.boundary
+		if startNew < boundary {
+			startNew = boundary
 		}
 		return startNew, endNew
 	}
 	startNew := state.frontier
 	endNew := startNew + expandStep - 1
-	if state.boundary > 0 && endNew > state.boundary {
-		endNew = state.boundary
+	if boundary > 0 && endNew > boundary {
+		endNew = boundary
 	}
 	return startNew, endNew
 }
@@ -771,12 +848,15 @@ func advanceState(direction string, state *expandState, lines []DiffLine, totalN
 	}
 }
 
-// report whether a gap has been fully revealed in the given direction.
+// report whether a gap has been fully revealed in the given direction. For a
+// linked between-hunk gap the boundary is the sibling's frontier, so the gap
+// closes when the two frontiers cross.
 func gapExhausted(direction string, state *expandState) bool {
+	boundary := state.effectiveBoundary()
 	if direction == expandUp {
-		return state.frontier < state.boundary
+		return state.frontier < boundary
 	}
-	return state.boundary > 0 && state.frontier > state.boundary
+	return boundary > 0 && state.frontier > boundary
 }
 
 func createDiffLine(line DiffLine, filePath string) *js.Object {

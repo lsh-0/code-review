@@ -79,7 +79,7 @@ func TestGetFileCommentStatus(t *testing.T) {
 	}
 }
 
-func TestTrailingContextLines(t *testing.T) {
+func TestHunkReachedEOF(t *testing.T) {
 	added := DiffLine{Type: LineAdded}
 	context := DiffLine{Type: LineContext}
 	removed := DiffLine{Type: LineRemoved}
@@ -87,47 +87,109 @@ func TestTrailingContextLines(t *testing.T) {
 	tests := []struct {
 		name     string
 		given    []DiffLine
-		expected int
+		expected bool
 	}{
 		{
 			name:     "no lines",
 			given:    []DiffLine{},
-			expected: 0,
+			expected: false,
 		},
 		{
-			name:     "full trailing context",
+			name:     "full trailing context is not end-of-file",
 			given:    []DiffLine{added, context, context, context},
-			expected: 3,
+			expected: false,
 		},
 		{
 			name:     "short trailing context signals end-of-file",
 			given:    []DiffLine{added, context},
-			expected: 1,
+			expected: true,
 		},
 		{
-			name:     "change is the last line",
+			name:     "added line is the last line, no trailing context",
 			given:    []DiffLine{context, context, context, added},
-			expected: 0,
+			expected: true,
 		},
 		{
-			name:     "removed line breaks the trailing run",
-			given:    []DiffLine{added, removed, context, context},
-			expected: 2,
+			// the regression: a hunk ending in deletions has 0 trailing
+			// context for reasons unrelated to EOF, so it must not be treated
+			// as end-of-file — the new side may continue past the hunk.
+			name:     "removed line is the last line is not end-of-file",
+			given:    []DiffLine{context, context, context, added, removed, removed},
+			expected: false,
 		},
 		{
-			name:     "all context",
+			name:     "all context, fewer than the context size",
 			given:    []DiffLine{context, context},
-			expected: 2,
+			expected: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual := trailingContextLines(tt.given)
+			actual := hunkReachedEOF(tt.given)
 			if actual != tt.expected {
-				t.Errorf("trailingContextLines() = %v, want %v", actual, tt.expected)
+				t.Errorf("hunkReachedEOF() = %v, want %v", actual, tt.expected)
 			}
 		})
+	}
+}
+
+func TestEffectiveBoundary(t *testing.T) {
+	t.Run("unlinked uses fixed boundary", func(t *testing.T) {
+		given := &expandState{frontier: 50, boundary: 10}
+		expected := 10
+		actual := given.effectiveBoundary()
+		if actual != expected {
+			t.Errorf("effectiveBoundary() = %d, want %d", actual, expected)
+		}
+	})
+
+	t.Run("linked uses sibling frontier", func(t *testing.T) {
+		// the upward control's true boundary is wherever the downward control
+		// has revealed to, not the static gap edge.
+		down := &expandState{frontier: 25}
+		up := &expandState{frontier: 50, boundary: 10, sibling: down}
+		expected := 25
+		actual := up.effectiveBoundary()
+		if actual != expected {
+			t.Errorf("effectiveBoundary() = %d, want %d", actual, expected)
+		}
+	})
+}
+
+func TestStepRangeClampsToSiblingFrontier(t *testing.T) {
+	// a between-hunk gap where the downward control has revealed up to line 30.
+	// the upward control, stepping from 50, must not request past 31 (one above
+	// the sibling's frontier is the lowest it should reach in a single step is
+	// bounded by expandStep, but the clamp is to the sibling frontier).
+	down := &expandState{frontier: 30}
+	up := &expandState{frontier: 50, boundary: 10, sibling: down}
+
+	startNew, endNew := stepRange(expandUp, up)
+
+	if endNew != 50 {
+		t.Errorf("expected endNew 50, got %d", endNew)
+	}
+	// expandStep is 20, so a raw step would start at 31; the sibling frontier
+	// (30) is the clamp, and 31 > 30 so the full step fits.
+	if startNew != 31 {
+		t.Errorf("expected startNew clamped to 31, got %d", startNew)
+	}
+}
+
+func TestGapExhaustedWhenFrontiersCross(t *testing.T) {
+	// the two converging controls have met: the upward frontier has dropped
+	// below the downward frontier, so the gap is fully revealed.
+	down := &expandState{frontier: 40}
+	up := &expandState{frontier: 39, boundary: 10, sibling: down}
+
+	if !gapExhausted(expandUp, up) {
+		t.Error("expected gap exhausted once upward frontier crossed the sibling")
+	}
+
+	notYet := &expandState{frontier: 45, boundary: 10, sibling: &expandState{frontier: 40}}
+	if gapExhausted(expandUp, notYet) {
+		t.Error("expected gap not exhausted while a hidden span remains")
 	}
 }
 
