@@ -4,6 +4,10 @@ Schema: `files` is an array of { file_path, comments[] }. Each comment has: `id`
 
 To act on a review: address every comment with status 'active'. Do the smaller, mechanical changes first, then the larger ones. A comment must be addressed unless it is genuinely impossible; if a comment seems impossible, you have probably misunderstood it, so re-read it rather than skip it. Make the requested change in the actual source file at file_path within repo_path, then set that comment's `status` to 'resolved'.
 
+A comment usually addresses a pattern, not only the lines it sits on. Feedback like "extract this into a convenience function" or "use the existing helper here" generally means apply that principle everywhere it holds across the project, not just at the commented location — search out the other sites and fix them too. This is what makes the change consistent and saves the same comment recurring next round.
+
+Work unsupervised: do not pause to ask the reviewer for confirmation or print questions to the console — the reviewer does not see console output and will not answer mid-run. When a comment leaves a genuine judgement call (how widely to apply a change, a risky or far-reaching edit, two reasonable interpretations), make a decision and proceed; default to the smaller, safer change. Then record what you decided and what you held back as a reply on that comment, so the reviewer can direct the broader change in the next round. The reply thread is the only channel back to the reviewer, so use it for anything that needs their input rather than leaving the work undone.
+
 Do not set `status` to 'ignored' on your own; leave such a comment 'active', add a reply explaining what blocked you, and let the reviewer decide.
 
 You may add a reply by appending a new comment to the `comments` array with a new unique `id`, its `parent_id` set to the id of the comment you are replying to, an `author`, and `content`; use replies to record a blocker, a question, or a note for the reviewer. Do not change the `id`, `parent_id`, `line_number`, or context fields of existing comments, do not edit or delete existing replies, and do not add or remove root comments.

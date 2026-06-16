@@ -109,26 +109,17 @@ Surfaced on the overview page alongside code comments. Same
 resolve/ignore status and replies, just no line anchor. Needs state
 schema changes and an update to the `_readme` review instructions.
 ---
-title: Tighten the automated-review protocol, possibly via a CLI
+title: Add a code-review CLI for agents instead of hand-editing JSON
 added: 2026-06-14
+updated: 2026-06-16
 effort: high
 tags: backend, model, automation
-summary: Sharpen how an agent uses the state to leave feedback (when to comment, when to unmark); consider a CLI instead of hand-editing JSON
+summary: A `code-review` CLI offering direct actions (resolve, reply, unmark) would be cleaner and less error-prone than an agent editing the state JSON by hand
 
-Not about how to review code, but the mechanics of the agent's
-interaction with the state. A `code-review` CLI offering direct actions
-might be cleaner and less error-prone than editing the JSON by hand.
----
-title: Instruct agents on feedback scope beyond the changes under review
-added: 2026-06-14
-effort: medium
-tags: backend, model, automation
-summary: Feedback often intends a project-wide change, but agents scope edits to just the changes under review
-
-A comment like "use a convenience function for this emerging pattern"
-usually means apply it everywhere, not only to recent changes. The
-instructions should also favour showing the fix in a narrow scope first,
-then confirming before applying project-wide.
+The instruction prose on the agent's interaction with the state (when to
+reply, when to unmark, working unsupervised) was sharpened in
+`statefile-usage.md`. The remaining piece is the CLI: direct actions
+would be less error-prone than hand-editing the JSON.
 ---
 title: Review the refresh implementation
 added: 2026-06-14
