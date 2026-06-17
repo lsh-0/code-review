@@ -175,9 +175,60 @@ header {
     background: var(--color-bg-primary);
 }
 
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* a full-width notice pinned above the panes, shown when the review's state
+   file is changed by another process. It sits in normal flow so the panes
+   shrink to make room rather than being covered. */
+#review-changed-banner {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: #fff3cd;
+    color: #7a5c00;
+    border-bottom: 1px solid #e0c46c;
+    font-size: 0.9rem;
+}
+
+#review-changed-banner.hidden {
+    display: none;
+}
+
+#banner-refresh-btn {
+    padding: 0.2rem 0.7rem;
+    background: #7a5c00;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+#banner-refresh-btn:hover {
+    background: #5c4500;
+}
+
+.banner-dismiss {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: #7a5c00;
+    font-size: 1.2rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 0.3rem;
+}
+
 #main-content {
     display: flex;
-    height: 100vh;
+    flex: 1;
+    min-height: 0;
 }
 
 #file-list {

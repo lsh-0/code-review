@@ -44,6 +44,70 @@ func applyZoom() {
 	doc.Get("documentElement").Get("style").Call("setProperty", "--zoom", fmt.Sprintf("%g", zoomLevel))
 }
 
+// resolve the bound backend App object, or nil if the bridge is not yet ready.
+// Every backend call goes through here so the not-ready guard lives in one
+// place.
+func app() *js.Object {
+	backend := win.Get("go")
+	if backend == js.Undefined {
+		return nil
+	}
+	bound := backend.Get("main").Get("App")
+	if bound == js.Undefined {
+		return nil
+	}
+	return bound
+}
+
+// log a bridge call failure. GopherJS has no structured error channel back to
+// the user here, so this records to the console for diagnosis; callers that
+// need user-facing feedback handle it themselves.
+func reportBridgeError(method string, args []*js.Object) {
+	detail := ""
+	if len(args) > 0 && args[0] != js.Undefined {
+		detail = args[0].String()
+	}
+	win.Get("console").Call("error", "backend call failed: "+method, detail)
+}
+
+// call a backend `method`, decode its JSON-string result into `out` (when
+// non-nil), then invoke `onOK`. Methods that return only an error pass a nil
+// `out`. If the bridge is not ready, `onOK` still runs so callers degrade
+// rather than hang. Errors are routed to `reportBridgeError`. This replaces the
+// per-method undefined-guard and promise plumbing that was repeated at every
+// call site.
+func callBackend(method string, out interface{}, onOK func(), args ...interface{}) {
+	bound := app()
+	if bound == nil {
+		if onOK != nil {
+			onOK()
+		}
+		return
+	}
+
+	promise := bound.Call(method, args...)
+	promise.Call("then", js.MakeFunc(func(this *js.Object, rs []*js.Object) interface{} {
+		if out != nil && len(rs) > 0 && rs[0] != js.Undefined {
+			// a *string out takes the raw result; backend methods returning a
+			// plain Go string (not JSON) deliver an unquoted value that would
+			// not unmarshal. Everything else is JSON-decoded.
+			if sp, ok := out.(*string); ok {
+				*sp = rs[0].String()
+			} else {
+				json.Unmarshal([]byte(rs[0].String()), out)
+			}
+		}
+		if onOK != nil {
+			onOK()
+		}
+		return nil
+	}))
+	promise.Call("catch", js.MakeFunc(func(this *js.Object, rs []*js.Object) interface{} {
+		reportBridgeError(method, rs)
+		return nil
+	}))
+}
+
 type DiffFile struct {
 	Path   string     `json:"Path"`
 	Hunks  []DiffHunk `json:"Hunks"`
@@ -72,58 +136,29 @@ const (
 )
 
 func loadReviewInfo() {
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		return
-	}
-
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		return
-	}
-
-	promise := app.Call("GetReviewInfo")
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		if len(args) > 0 && args[0] != js.Undefined {
-			infoJSON := args[0].String()
-			var info map[string]string
-			json.Unmarshal([]byte(infoJSON), &info)
-
-			currentUser = info["current_user"]
-
-			branchInfo := doc.Call("getElementById", "branch-info")
-			branchInfo.Set("textContent", info["source_branch"]+" → "+info["target_branch"])
-		}
-		return nil
-	}))
+	var info map[string]string
+	callBackend("GetReviewInfo", &info, func() {
+		currentUser = info["current_user"]
+		branchInfo := doc.Call("getElementById", "branch-info")
+		branchInfo.Set("textContent", info["source_branch"]+" → "+info["target_branch"])
+	})
 }
 
 // fetch the AI prompt (path + instructions) from the backend and write it to
 // the clipboard, giving brief feedback on the button itself.
 func copyStatePrompt() {
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		return
-	}
-
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		return
-	}
-
-	promise := app.Call("GetStatePrompt")
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		if len(args) == 0 || args[0] == js.Undefined {
-			return nil
+	var prompt string
+	callBackend("GetStatePrompt", &prompt, func() {
+		if prompt == "" {
+			return
 		}
-		prompt := args[0].String()
 
 		btn := doc.Call("getElementById", "copy-prompt-btn")
 		original := btn.Get("textContent").String()
 
 		clipboard := win.Get("navigator").Get("clipboard")
 		if clipboard == js.Undefined {
-			return nil
+			return
 		}
 		writePromise := clipboard.Call("writeText", prompt)
 		writePromise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
@@ -134,8 +169,7 @@ func copyStatePrompt() {
 			}), 1500)
 			return nil
 		}))
-		return nil
-	}))
+	})
 }
 
 func loadAllComments(callback func()) {
@@ -160,29 +194,11 @@ func loadAllComments(callback func()) {
 // then invoke `callback`. Used both for the initial load and on refresh, so the
 // file list reflects newly committed files.
 func loadDiffFiles(callback func()) {
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		return
-	}
-
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		return
-	}
-
-	promise := app.Call("GetDiffFiles")
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		if len(args) > 0 && args[0] != js.Undefined {
-			filesJSON := args[0].String()
-			json.Unmarshal([]byte(filesJSON), &diffFiles)
-			loadAllComments(func() {
-				loadMarkedFiles(func() {
-					callback()
-				})
-			})
-		}
-		return nil
-	}))
+	callBackend("GetDiffFiles", &diffFiles, func() {
+		loadAllComments(func() {
+			loadMarkedFiles(callback)
+		})
+	})
 }
 
 // load the set of files the reviewer has marked as done into `markedFiles`,
@@ -190,45 +206,18 @@ func loadDiffFiles(callback func()) {
 func loadMarkedFiles(callback func()) {
 	markedFiles = make(map[string]bool)
 
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		callback()
-		return
-	}
-
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		callback()
-		return
-	}
-
-	promise := app.Call("GetMarkedFiles")
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		if len(args) > 0 && args[0] != js.Undefined {
-			var paths []string
-			json.Unmarshal([]byte(args[0].String()), &paths)
-			for _, path := range paths {
-				markedFiles[path] = true
-			}
+	var paths []string
+	callBackend("GetMarkedFiles", &paths, func() {
+		for _, path := range paths {
+			markedFiles[path] = true
 		}
 		callback()
-		return nil
-	}))
+	})
 }
 
 // persist the marked/unmarked state of `filePath` to the backend state file.
 func setFileMarked(filePath string, marked bool) {
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		return
-	}
-
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		return
-	}
-
-	app.Call("SetFileMarked", filePath, marked)
+	callBackend("SetFileMarked", nil, nil, filePath, marked)
 }
 
 func getFileCommentStatus(filePath string) string {
@@ -236,41 +225,9 @@ func getFileCommentStatus(filePath string) string {
 	if !ok || len(comments) == 0 {
 		return "none"
 	}
-
-	hasActive := false
-	hasIgnored := false
-	allResolved := true
-	rootCount := 0
-
-	for _, comment := range comments {
-		// replies carry no meaningful status; only root comments determine the
-		// file's aggregate state.
-		if comment.ParentID != "" {
-			continue
-		}
-		rootCount++
-		if comment.Status == model.CommentStatusActive {
-			hasActive = true
-			allResolved = false
-		} else if comment.Status == model.CommentStatusIgnored {
-			hasIgnored = true
-			allResolved = false
-		} else if comment.Status == model.CommentStatusResolved {
-			continue
-		}
-	}
-
-	if hasActive {
-		return "active"
-	}
-	if allResolved && rootCount > 0 {
-		return "resolved"
-	}
-	if hasIgnored {
-		return "ignored"
-	}
-
-	return "none"
+	// the aggregation rules live in the shared model so the backend's mutation
+	// result and this pill stay in step.
+	return model.FileCommentStatus(comments)
 }
 
 func renderFileList() {
@@ -383,24 +340,17 @@ func renderOverviewEntry() {
 	footer.Call("appendChild", entry)
 }
 
-func refreshState(callback func()) {
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		callback()
-		return
-	}
+// cheap reload of review state from the state JSON, no git.
+func reloadReview(callback func()) {
+	callBackend("ReloadReview", nil, callback)
+}
 
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		callback()
-		return
-	}
-
-	promise := app.Call("RefreshState")
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		callback()
-		return nil
-	}))
+// full refresh: recompute the diff from git, then reload review state. The diff
+// recompute is what surfaces newly committed files.
+func recomputeDiff(callback func()) {
+	callBackend("RecomputeDiff", nil, func() {
+		reloadReview(callback)
+	})
 }
 
 func selectFile(filePath string) {
@@ -436,10 +386,12 @@ func selectFile(filePath string) {
 	doc.Call("getElementById", "current-file-name").Set("textContent", filePath)
 	renderBrowseLink(filePath)
 
-	refreshState(func() {
-		loadComments(filePath, func() {
-			renderDiff(filePath)
-		})
+	// render from already-loaded state: no diff recompute, no git. The diff is
+	// unchanged between selections, so selecting a file only reloads the file's
+	// comments (cheap) and renders. An agent's edits are surfaced by the explicit
+	// refresh and the external-change banner, not by paying git on every click.
+	loadComments(filePath, func() {
+		renderDiff(filePath)
 	})
 }
 
@@ -466,7 +418,9 @@ func selectOverview() {
 	doc.Call("getElementById", "current-file-name").Set("textContent", "Review overview")
 	removeBrowseLink()
 
-	refreshState(func() {
+	// reload review state so the overview reflects comment edits, but do not
+	// recompute the diff — the overview is built from comments, not hunks.
+	reloadReview(func() {
 		loadCommentedFiles(func(reviewComments []*model.Comment, files []commentedFile) {
 			renderOverview(reviewComments, files)
 		})
@@ -484,17 +438,6 @@ type commentedFile struct {
 // comment-thread rendering (which reads the cache for replies) works in the
 // overview just as it does for a single file.
 func loadCommentedFiles(callback func(reviewComments []*model.Comment, files []commentedFile)) {
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		callback(nil, nil)
-		return
-	}
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		callback(nil, nil)
-		return
-	}
-
 	if commentsCache == nil {
 		commentsCache = make(map[string][]*model.Comment)
 	}
@@ -503,29 +446,18 @@ func loadCommentedFiles(callback func(reviewComments []*model.Comment, files []c
 	// rendering. Review comments are cached under the empty-path key so the
 	// shared comment handlers (which thread `filePath`) resolve their replies
 	// and route status changes to the review level.
-	filesPromise := app.Call("GetCommentedFiles")
-	filesPromise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		var files []commentedFile
-		if len(args) > 0 && args[0] != js.Undefined {
-			json.Unmarshal([]byte(args[0].String()), &files)
-		}
+	var files []commentedFile
+	callBackend("GetCommentedFiles", &files, func() {
 		for _, f := range files {
 			commentsCache[f.Path] = f.Comments
 		}
 
-		reviewPromise := app.Call("GetReviewComments")
-		reviewPromise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-			var reviewComments []*model.Comment
-			if len(args) > 0 && args[0] != js.Undefined {
-				json.Unmarshal([]byte(args[0].String()), &reviewComments)
-			}
+		var reviewComments []*model.Comment
+		callBackend("GetReviewComments", &reviewComments, func() {
 			commentsCache[""] = reviewComments
-
 			callback(reviewComments, files)
-			return nil
-		}))
-		return nil
-	}))
+		})
+	})
 }
 
 // render the overview into the diff pane: a review-level "General feedback"
@@ -635,20 +567,14 @@ func removeBrowseLink() {
 // open a file in the preferred application via the backend, reporting a
 // failure without altering review state.
 func browseFile(filePath string) {
-	backend := win.Get("go")
-	if backend == js.Undefined {
+	bound := app()
+	if bound == nil {
 		return
 	}
 
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		return
-	}
-
-	promise := app.Call("BrowseFile", filePath)
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		return nil
-	}))
+	// a custom catch is needed here: open failures are surfaced to the reviewer
+	// with an alert, not just the console, so this does not use callBackend.
+	promise := bound.Call("BrowseFile", filePath)
 	promise.Call("catch", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		win.Call("alert", "Could not open "+filePath)
 		return nil
@@ -656,34 +582,14 @@ func browseFile(filePath string) {
 }
 
 func loadComments(filePath string, callback func()) {
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		callback()
-		return
-	}
-
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		callback()
-		return
-	}
-
-	promise := app.Call("GetComments", filePath)
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		if len(args) > 0 && args[0] != js.Undefined {
-			commentsJSON := args[0].String()
-			var comments []*model.Comment
-			json.Unmarshal([]byte(commentsJSON), &comments)
-
-			if commentsCache == nil {
-				commentsCache = make(map[string][]*model.Comment)
-			}
-			commentsCache[filePath] = comments
-
-			callback()
+	var comments []*model.Comment
+	callBackend("GetComments", &comments, func() {
+		if commentsCache == nil {
+			commentsCache = make(map[string][]*model.Comment)
 		}
-		return nil
-	}))
+		commentsCache[filePath] = comments
+		callback()
+	}, filePath)
 }
 
 func renderDiff(filePath string) {
@@ -818,8 +724,18 @@ func hunkReachedEOF(lines []DiffLine) bool {
 func appendCommentThread(parent *js.Object, filePath string, lineNo int) {
 	comments := getCommentsForLine(filePath, lineNo)
 	if len(comments) > 0 {
-		parent.Call("appendChild", createCommentThread(filePath, comments))
+		parent.Call("appendChild", lineCommentThread(filePath, lineNo, comments))
 	}
+}
+
+// a line-anchored comment thread carrying a `data-line` attribute, so an
+// incremental update can find and replace exactly this thread without
+// re-rendering the diff. The attribute is the new-file line number the thread
+// sits on.
+func lineCommentThread(filePath string, lineNo int, comments []*model.Comment) *js.Object {
+	thread := createCommentThread(filePath, comments)
+	thread.Call("setAttribute", "data-line", fmt.Sprintf("%d", lineNo))
+	return thread
 }
 
 // add an expansion affordance row to a hunk element and return its state.
@@ -899,18 +815,16 @@ func (s *expandState) effectiveBoundary() int {
 // request the next step of context lines from the backend and splice them
 // into the gap, then re-evaluate whether the affordance should remain.
 func expandGap(row, hunkElem *js.Object, filePath, direction string, oldOffset int, state *expandState) {
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		return
-	}
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
+	bound := app()
+	if bound == nil {
 		return
 	}
 
 	startNew, endNew := stepRange(direction, state)
 
-	promise := app.Call("GetFileLines", filePath, startNew, endNew, oldOffset)
+	// a bespoke catch disables this affordance on a failed range request, so
+	// this does not use callBackend.
+	promise := bound.Call("GetFileLines", filePath, startNew, endNew, oldOffset)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		if len(args) == 0 || args[0] == js.Undefined {
 			return nil
@@ -1030,7 +944,7 @@ func commentThreadOrNil(filePath string, lineNo int) *js.Object {
 	if len(comments) == 0 {
 		return nil
 	}
-	return createCommentThread(filePath, comments)
+	return lineCommentThread(filePath, lineNo, comments)
 }
 
 // move the frontier toward the gap boundary by the number of revealed lines,
@@ -1061,6 +975,12 @@ func gapExhausted(direction string, state *expandState) bool {
 func createDiffLine(line DiffLine, filePath string) *js.Object {
 	lineElem := doc.Call("createElement", "div")
 	lineElem.Get("classList").Call("add", "diff-line")
+
+	// a new-file line carries its line number so an incremental comment update
+	// can find this row and insert a fresh thread immediately after it.
+	if line.NewLineNo > 0 {
+		lineElem.Call("setAttribute", "data-line", fmt.Sprintf("%d", line.NewLineNo))
+	}
 
 	switch line.Type {
 	case LineAdded:
@@ -1321,17 +1241,27 @@ func getLineContext(filePath string, lineNumber int) (string, string, string) {
 	return "", "", ""
 }
 
-func refreshFileView(filePath string) {
-	loadComments(filePath, func() {
-		renderDiff(filePath)
-		renderFileList()
-	})
+// the shape the backend returns from a comment mutation: enough to patch the
+// one affected thread and the file's status pill without a full re-render.
+type commentMutationResult struct {
+	FilePath   string           `json:"file_path"`
+	LineNumber int              `json:"line_number"`
+	Comments   []*model.Comment `json:"comments"`
+	FileStatus string           `json:"file_status"`
 }
 
-// re-render after a comment action, choosing the right surface: the overview
-// when it is showing (including all review-level comment actions, which carry
-// an empty file path), otherwise the single-file view.
-func refreshAfterAction(filePath string) {
+// apply a comment mutation incrementally. The affected file's comment cache is
+// overwritten from the result, then only the touched thread is re-rendered (the
+// diff and its expanded context and scroll are left intact) and the file's
+// status pill is updated. The overview is a separate surface rebuilt wholesale,
+// since it has no diff state to preserve; a review-level mutation (empty file
+// path) only makes sense there.
+func applyMutation(raw string) {
+	var result commentMutationResult
+	json.Unmarshal([]byte(raw), &result)
+
+	commentsCache[result.FilePath] = result.Comments
+
 	if overviewActive {
 		loadCommentedFiles(func(reviewComments []*model.Comment, files []commentedFile) {
 			renderOverview(reviewComments, files)
@@ -1339,7 +1269,61 @@ func refreshAfterAction(filePath string) {
 		})
 		return
 	}
-	refreshFileView(filePath)
+
+	patchLineThread(result.FilePath, result.LineNumber)
+	setFileStatusPill(result.FilePath, result.FileStatus)
+}
+
+// re-render just the thread anchored at `lineNo` in the current diff view from
+// the (already updated) comment cache: replace the existing thread, insert a new
+// one after the line, or remove it when the line has no comments left.
+func patchLineThread(filePath string, lineNo int) {
+	content := doc.Call("getElementById", "diff-content")
+	if content == js.Undefined || content == nil {
+		return
+	}
+
+	existing := content.Call("querySelector", fmt.Sprintf(".comment-thread[data-line=\"%d\"]", lineNo))
+	comments := getCommentsForLine(filePath, lineNo)
+
+	if len(comments) == 0 {
+		if existing != js.Undefined && existing != nil {
+			existing.Call("remove")
+		}
+		return
+	}
+
+	thread := lineCommentThread(filePath, lineNo, comments)
+
+	if existing != js.Undefined && existing != nil {
+		existing.Get("parentNode").Call("replaceChild", thread, existing)
+		return
+	}
+
+	// no thread yet: insert immediately after the diff line it anchors.
+	line := content.Call("querySelector", fmt.Sprintf(".diff-line[data-line=\"%d\"]", lineNo))
+	if line != js.Undefined && line != nil {
+		line.Get("parentNode").Call("insertBefore", thread, line.Get("nextSibling"))
+	}
+}
+
+// update the file-list status pill for `filePath` to `status` without rebuilding
+// the list, preserving the rest of the file list as-is.
+func setFileStatusPill(filePath string, status string) {
+	items := doc.Call("querySelectorAll", ".file-item")
+	for i := 0; i < items.Length(); i++ {
+		item := items.Index(i)
+		if item.Get("dataset").Get("path").String() != filePath {
+			continue
+		}
+		for _, s := range []string{"active", "resolved", "ignored"} {
+			item.Get("classList").Call("remove", "has-comments-"+s)
+		}
+		if status != "none" {
+			item.Get("classList").Call("add", "has-comments-"+status)
+		}
+		return
+	}
 }
 
 func saveComment() {
@@ -1350,38 +1334,25 @@ func saveComment() {
 		return
 	}
 
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		return
-	}
-
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		return
-	}
-
 	// a review-level comment has no file or line anchor; it is added through a
-	// distinct backend call and refreshes the overview rather than a file view.
+	// distinct backend call. It can only be created from the overview, so the
+	// mutation routes through the overview surface.
 	if reviewCommentMode {
-		promise := app.Call("AddReviewComment", content)
-		promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		var raw string
+		callBackend("AddReviewComment", &raw, func() {
 			hideCommentModal()
-			loadCommentedFiles(func(reviewComments []*model.Comment, files []commentedFile) {
-				renderOverview(reviewComments, files)
-			})
-			return nil
-		}))
+			applyMutation(raw)
+		}, content)
 		return
 	}
 
 	contextBefore, contextLine, contextAfter := getLineContext(currentFile, currentLineNumber)
 
-	promise := app.Call("AddComment", currentFile, content, currentLineNumber, contextBefore, contextLine, contextAfter)
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+	var raw string
+	callBackend("AddComment", &raw, func() {
 		hideCommentModal()
-		refreshAfterAction(currentFile)
-		return nil
-	}))
+		applyMutation(raw)
+	}, currentFile, content, currentLineNumber, contextBefore, contextLine, contextAfter)
 }
 
 func showEditCommentModal(filePath string, commentID string, content string) {
@@ -1408,22 +1379,11 @@ func updateComment() {
 		return
 	}
 
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		return
-	}
-
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		return
-	}
-
-	promise := app.Call("UpdateComment", currentFile, currentCommentID, content)
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+	var raw string
+	callBackend("UpdateComment", &raw, func() {
 		hideEditCommentModal()
-		refreshAfterAction(currentFile)
-		return nil
-	}))
+		applyMutation(raw)
+	}, currentFile, currentCommentID, content)
 }
 
 func showReplyModal(filePath string, commentID string) {
@@ -1450,92 +1410,96 @@ func saveReply() {
 		return
 	}
 
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		return
-	}
-
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		return
-	}
-
-	promise := app.Call("AddReply", currentFile, currentReplyID, content)
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+	var raw string
+	callBackend("AddReply", &raw, func() {
 		hideReplyModal()
-		refreshAfterAction(currentFile)
-		return nil
-	}))
+		applyMutation(raw)
+	}, currentFile, currentReplyID, content)
 }
 
 func resolveComment(filePath string, commentID string) {
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		return
-	}
-
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		return
-	}
-
-	promise := app.Call("ResolveComment", filePath, commentID)
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		refreshAfterAction(filePath)
-		return nil
-	}))
+	var raw string
+	callBackend("ResolveComment", &raw, func() {
+		applyMutation(raw)
+	}, filePath, commentID)
 }
 
 func ignoreComment(filePath string, commentID string) {
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		return
-	}
-
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		return
-	}
-
-	promise := app.Call("IgnoreComment", filePath, commentID)
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		refreshAfterAction(filePath)
-		return nil
-	}))
+	var raw string
+	callBackend("IgnoreComment", &raw, func() {
+		applyMutation(raw)
+	}, filePath, commentID)
 }
 
 func reactivateComment(filePath string, commentID string) {
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		return
-	}
-
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		return
-	}
-
-	promise := app.Call("ReactivateComment", filePath, commentID)
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		refreshAfterAction(filePath)
-		return nil
-	}))
+	var raw string
+	callBackend("ReactivateComment", &raw, func() {
+		applyMutation(raw)
+	}, filePath, commentID)
 }
 
 func deleteComment(filePath string, commentID string) {
-	backend := win.Get("go")
-	if backend == js.Undefined {
-		return
+	var raw string
+	callBackend("DeleteComment", &raw, func() {
+		applyMutation(raw)
+	}, filePath, commentID)
+}
+
+// recompute the diff from git and reload review state, then re-render the file
+// list and the visible surface. Shared by the Refresh button and the
+// external-change banner's refresh.
+func performFullRefresh() {
+	recomputeDiff(func() {
+		loadDiffFiles(func() {
+			renderFileList()
+			if overviewActive {
+				loadCommentedFiles(func(reviewComments []*model.Comment, files []commentedFile) {
+					renderOverview(reviewComments, files)
+				})
+			} else if currentFile != "" {
+				renderDiff(currentFile)
+			}
+		})
+	})
+}
+
+// show the banner announcing that the review's state file was changed by
+// another process. The view is left untouched; the reviewer chooses when to
+// refresh.
+func showReviewChangedBanner() {
+	banner := doc.Call("getElementById", "review-changed-banner")
+	if banner != js.Undefined && banner != nil {
+		banner.Get("classList").Call("remove", "hidden")
+	}
+}
+
+func hideReviewChangedBanner() {
+	banner := doc.Call("getElementById", "review-changed-banner")
+	if banner != js.Undefined && banner != nil {
+		banner.Get("classList").Call("add", "hidden")
+	}
+}
+
+// register the handler for the backend's `review:changed` event (the state file
+// was edited externally) and wire the banner's refresh and dismiss controls.
+// The event only raises the banner; it never re-renders the view on its own.
+func setupReviewChangedBanner() {
+	runtime := win.Get("runtime")
+	if runtime != js.Undefined && runtime != nil {
+		runtime.Call("EventsOn", "review:changed", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			showReviewChangedBanner()
+			return nil
+		}))
 	}
 
-	app := backend.Get("main").Get("App")
-	if app == js.Undefined {
-		return
-	}
+	doc.Call("getElementById", "banner-refresh-btn").Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		performFullRefresh()
+		hideReviewChangedBanner()
+		return nil
+	}))
 
-	promise := app.Call("DeleteComment", filePath, commentID)
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		refreshAfterAction(filePath)
+	doc.Call("getElementById", "banner-dismiss-btn").Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		hideReviewChangedBanner()
 		return nil
 	}))
 }
@@ -1577,18 +1541,7 @@ func setupEventHandlers() {
 	}))
 
 	doc.Call("getElementById", "refresh-btn").Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		refreshState(func() {
-			loadDiffFiles(func() {
-				renderFileList()
-				if overviewActive {
-					loadCommentedFiles(func(reviewComments []*model.Comment, files []commentedFile) {
-						renderOverview(reviewComments, files)
-					})
-				} else if currentFile != "" {
-					renderDiff(currentFile)
-				}
-			})
-		})
+		performFullRefresh()
 		return nil
 	}))
 
@@ -1707,6 +1660,7 @@ func initialize() {
 		renderFileList()
 	})
 	setupEventHandlers()
+	setupReviewChangedBanner()
 }
 
 func main() {

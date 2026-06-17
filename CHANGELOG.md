@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- A banner across the top of the window when another program (such as an AI agent or a command-line tool) changes the
+  review while it is open, offering a refresh. The view never changes on its own; the reviewer chooses when to reload.
+
+### Changed
+
+- Selecting a file no longer recomputes the diff, so switching between files is immediate. The diff is now recomputed
+  only when Refresh is pressed, where newly committed files are picked up.
+- Adding, resolving or deleting a comment updates just that comment's thread in place, keeping expanded context lines and
+  scroll position rather than re-rendering the whole file.
+- A file's "done" mark now records the version it was reviewed against, so the mark is dropped whenever a commit changes
+  that file — including changes made while the app was closed — returning it to the set of files still needing review.
+  - The `marked_files` field in the state file changes from a list of paths to a list of `{path, blob}` records; existing
+    state files are upgraded automatically on first open.
+
 ## [0.6.0] - 2026-06-17
 
 ### Added

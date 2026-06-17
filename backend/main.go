@@ -9,6 +9,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sync"
+	"time"
 
 	"code-review/assets"
 	"github.com/wailsapp/wails/v2"
@@ -27,10 +29,39 @@ type App struct {
 	statePath string
 	diffFiles []DiffFile
 	fileCache *fileContentCache
+
+	// the modification time of the state file as of this GUI's own last write,
+	// so the watcher can tell a self-write (which it must ignore) from an
+	// external write by another process. Guarded because the watcher polls it
+	// from a separate goroutine.
+	savedMu        sync.Mutex
+	lastSavedMtime time.Time
 }
 
 func NewApp() *App {
 	return &App{}
+}
+
+// persist the review and record the resulting file modification time, so the
+// watcher does not mistake this GUI's own write for an external change. Every
+// state mutation goes through here rather than calling SaveReview directly.
+func (a *App) persist() error {
+	if err := SaveReview(a.statePath, a.review); err != nil {
+		return err
+	}
+	a.markSaved()
+	return nil
+}
+
+// record the state file's current modification time as this GUI's last write.
+func (a *App) markSaved() {
+	info, err := os.Stat(a.statePath)
+	if err != nil {
+		return
+	}
+	a.savedMu.Lock()
+	a.lastSavedMtime = info.ModTime()
+	a.savedMu.Unlock()
 }
 
 func (a *App) startup(ctx context.Context) error {
@@ -75,31 +106,47 @@ func (a *App) startup(ctx context.Context) error {
 		}
 	} else {
 		a.review = model.NewReview(a.repoPath, currentBranch, defaultBranch)
-		if err := SaveReview(a.statePath, a.review); err != nil {
+		if err := a.persist(); err != nil {
 			return fmt.Errorf("failed to save new review: %w", err)
 		}
 	}
 
+	// record the baseline mtime (the file existed already, or was just written)
+	// so the watcher's first comparison is against this GUI's own state.
+	a.markSaved()
+
 	fmt.Println("state:", a.statePath)
 
-	if err := a.loadDiff(); err != nil {
+	if err := a.RecomputeDiff(); err != nil {
 		return err
 	}
+
+	// watch the state file for edits by another process (an agent or the CLI),
+	// so the GUI can offer a refresh when the review changes underneath it.
+	go a.watchStateFile(ctx)
 
 	return nil
 }
 
-// compute the diff between the review's branches, parse it into `diffFiles`,
+// recompute the diff between the review's branches, parse it into `diffFiles`,
 // reset the file-content cache (its bodies belong to the previous diff), and
-// ensure every changed file has a `FileDiff` entry in the review. Called at
-// startup and again on refresh so newly committed files appear.
-func (a *App) loadDiff() error {
-	diffText, err := GetDiff(a.repoPath, a.review.TargetBranch, a.review.SourceBranch)
+// ensure every changed file has a `FileDiff` entry in the review. This is the
+// only path that shells out to `git diff`. Called at startup and again on the
+// explicit refresh so newly committed files appear. It is deliberately not
+// called on file selection, where the diff is unchanged.
+func (a *App) RecomputeDiff() error {
+	newDiff, err := DiffQuery{
+		RepoPath: a.repoPath,
+		Base:     a.review.TargetBranch,
+		Head:     a.review.SourceBranch,
+	}.Run()
 	if err != nil {
-		return fmt.Errorf("failed to get diff: %w", err)
+		return err
 	}
 
-	a.diffFiles = ParseDiff(diffText)
+	a.evictChangedMarks()
+
+	a.diffFiles = newDiff
 
 	a.fileCache = newFileContentCache(func(rev, path string) (string, error) {
 		return GetFileAtRevision(a.repoPath, rev, path)
@@ -114,14 +161,42 @@ func (a *App) loadDiff() error {
 	return nil
 }
 
-func (a *App) RefreshState() error {
+// drop the "done" mark from any file whose committed content has changed since
+// it was marked, by comparing each mark's stored blob SHA against the file's
+// current SHA at the source-branch HEAD. A file deleted at that revision is
+// also unmarked; a legacy mark with no stored SHA is backfilled. This makes
+// mark eviction survive restarts: it depends only on the marks and git, not on
+// any prior in-session diff.
+func (a *App) evictChangedMarks() {
+	if len(a.review.MarkedFiles) == 0 {
+		return
+	}
+
+	paths := make([]string, 0, len(a.review.MarkedFiles))
+	for _, mark := range a.review.MarkedFiles {
+		paths = append(paths, mark.Path)
+	}
+
+	current, err := BlobSHAs(a.repoPath, a.review.SourceBranch, paths)
+	if err != nil {
+		return
+	}
+
+	a.review.EvictChangedMarks(current)
+}
+
+// re-read the review state (comments, marks, replies) from disk into
+// `a.review`. This is the cheap reload: it reads one JSON file and does no git
+// work, so picking up an agent's edits or switching to the overview costs only
+// a file read. The diff is untouched.
+func (a *App) ReloadReview() error {
 	review, err := LoadReview(a.statePath)
 	if err != nil {
 		return fmt.Errorf("failed to reload state: %w", err)
 	}
 	a.review = review
 
-	return a.loadDiff()
+	return nil
 }
 
 func (a *App) GetReviewInfo() (string, error) {
@@ -149,6 +224,22 @@ func (a *App) GetReviewInfo() (string, error) {
 
 func (a *App) GetDiffFiles() (string, error) {
 	data, err := json.Marshal(a.diffFiles)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// return the working-tree status (tracked files modified or deleted relative to
+// the index, untracked excluded) as JSON. This is distinct from the branch
+// diff: it backs the uncommitted-change banners, warning the reviewer when what
+// they see may not reflect what is on disk.
+func (a *App) GetWorkingTreeStatus() (string, error) {
+	status, err := GetWorkingTreeStatus(a.repoPath)
+	if err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(status)
 	if err != nil {
 		return "", err
 	}
@@ -256,12 +347,14 @@ func (a *App) GetReviewComments() (string, error) {
 	return string(data), nil
 }
 
+// the marked-file paths, as a bare string array for the frontend (which only
+// needs to know which files are marked, not their stored signatures).
 func (a *App) GetMarkedFiles() (string, error) {
-	marked := a.review.MarkedFiles
-	if marked == nil {
-		marked = []string{}
+	paths := make([]string, 0, len(a.review.MarkedFiles))
+	for _, mark := range a.review.MarkedFiles {
+		paths = append(paths, mark.Path)
 	}
-	data, err := json.Marshal(marked)
+	data, err := json.Marshal(paths)
 	if err != nil {
 		return "", err
 	}
@@ -270,12 +363,19 @@ func (a *App) GetMarkedFiles() (string, error) {
 
 func (a *App) SetFileMarked(filePath string, marked bool) error {
 	if marked {
-		a.review.MarkFile(filePath)
+		// record the file's current blob SHA at the source-branch HEAD, so a
+		// later open can tell whether the file has changed since it was marked. A
+		// lookup failure leaves the blob empty (it backfills on next open).
+		blob := ""
+		if shas, err := BlobSHAs(a.repoPath, a.review.SourceBranch, []string{filePath}); err == nil {
+			blob = shas[filePath]
+		}
+		a.review.MarkFile(filePath, blob)
 	} else {
 		a.review.UnmarkFile(filePath)
 	}
 
-	return SaveReview(a.statePath, a.review)
+	return a.persist()
 }
 
 // locate a comment by id. An empty `filePath` means a review-level comment
@@ -292,7 +392,62 @@ func (a *App) findComment(filePath string, commentID string) *model.Comment {
 	return fileDiff.GetComment(commentID)
 }
 
-func (a *App) AddComment(filePath string, content string, lineNumber int, contextBefore string, contextLine string, contextAfter string) error {
+// the result of a comment mutation: enough for the frontend to patch the one
+// affected thread and the file's status indicator without re-rendering the
+// whole surface. `FilePath` is empty for review-level comments. `LineNumber` is
+// the line the affected thread anchors (the comment's root line); it is -1 for
+// a review-level thread, which has no line. `Comments` is the file's (or the
+// review's) full flat comment array after the mutation, from which the frontend
+// rebuilds the thread. `FileStatus` is the recomputed file pill status.
+type CommentMutationResult struct {
+	FilePath   string           `json:"file_path"`
+	LineNumber int              `json:"line_number"`
+	Comments   []*model.Comment `json:"comments"`
+	FileStatus string           `json:"file_status"`
+}
+
+// the comments belonging to a surface: a file's `FileDiff.Comments`, or the
+// review-level comments when `filePath` is empty.
+func (a *App) commentsFor(filePath string) []*model.Comment {
+	if filePath == "" {
+		return a.review.Comments
+	}
+	if fileDiff := a.review.GetFileDiff(filePath); fileDiff != nil {
+		return fileDiff.Comments
+	}
+	return nil
+}
+
+// assemble the mutation result for a surface, anchored at `line`. `line` is the
+// affected thread's root line, computed by the caller (before a delete, since
+// the comment is then gone). Review-level threads use -1.
+func (a *App) mutationResult(filePath string, line int) CommentMutationResult {
+	comments := a.commentsFor(filePath)
+	if filePath == "" {
+		line = -1
+	}
+	return CommentMutationResult{
+		FilePath:   filePath,
+		LineNumber: line,
+		Comments:   comments,
+		FileStatus: model.FileCommentStatus(comments),
+	}
+}
+
+// save the review and return the mutation result for `filePath` at `line` as
+// JSON, the shared tail of every comment mutator.
+func (a *App) saveAndResult(filePath string, line int) (string, error) {
+	if err := a.persist(); err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(a.mutationResult(filePath, line))
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func (a *App) AddComment(filePath string, content string, lineNumber int, contextBefore string, contextLine string, contextAfter string) (string, error) {
 	fileDiff := a.review.GetFileDiff(filePath)
 	if fileDiff == nil {
 		fileDiff = a.review.AddFileDiff(filePath)
@@ -300,30 +455,30 @@ func (a *App) AddComment(filePath string, content string, lineNumber int, contex
 
 	fileDiff.AddCommentWithContext(content, lineNumber, a.userName, contextBefore, contextLine, contextAfter)
 
-	return SaveReview(a.statePath, a.review)
+	return a.saveAndResult(filePath, lineNumber)
 }
 
 // add a review-level comment: overall feedback not anchored to any file or
 // line, created from the overview.
-func (a *App) AddReviewComment(content string) error {
+func (a *App) AddReviewComment(content string) (string, error) {
 	a.review.AddComment(content, a.userName)
-	return SaveReview(a.statePath, a.review)
+	return a.saveAndResult("", -1)
 }
 
-func (a *App) UpdateComment(filePath string, commentID string, content string) error {
+func (a *App) UpdateComment(filePath string, commentID string, content string) (string, error) {
 	comment := a.findComment(filePath, commentID)
 	if comment == nil {
-		return fmt.Errorf("comment not found: %s", commentID)
+		return "", fmt.Errorf("comment not found: %s", commentID)
 	}
 
 	comment.UpdateContent(content)
 
-	return SaveReview(a.statePath, a.review)
+	return a.saveAndResult(filePath, model.CommentRootLine(a.commentsFor(filePath), commentID))
 }
 
-func (a *App) AddReply(filePath string, commentID string, content string) error {
+func (a *App) AddReply(filePath string, commentID string, content string) (string, error) {
 	if a.findComment(filePath, commentID) == nil {
-		return fmt.Errorf("comment not found: %s", commentID)
+		return "", fmt.Errorf("comment not found: %s", commentID)
 	}
 
 	if filePath == "" {
@@ -332,56 +487,60 @@ func (a *App) AddReply(filePath string, commentID string, content string) error 
 		a.review.GetFileDiff(filePath).AddReply(commentID, content, a.userName)
 	}
 
-	return SaveReview(a.statePath, a.review)
+	return a.saveAndResult(filePath, model.CommentRootLine(a.commentsFor(filePath), commentID))
 }
 
-func (a *App) ResolveComment(filePath string, commentID string) error {
+func (a *App) ResolveComment(filePath string, commentID string) (string, error) {
 	comment := a.findComment(filePath, commentID)
 	if comment == nil {
-		return fmt.Errorf("comment not found: %s", commentID)
+		return "", fmt.Errorf("comment not found: %s", commentID)
 	}
 
 	comment.Resolve()
 
-	return SaveReview(a.statePath, a.review)
+	return a.saveAndResult(filePath, model.CommentRootLine(a.commentsFor(filePath), commentID))
 }
 
-func (a *App) IgnoreComment(filePath string, commentID string) error {
+func (a *App) IgnoreComment(filePath string, commentID string) (string, error) {
 	comment := a.findComment(filePath, commentID)
 	if comment == nil {
-		return fmt.Errorf("comment not found: %s", commentID)
+		return "", fmt.Errorf("comment not found: %s", commentID)
 	}
 
 	comment.Ignore()
 
-	return SaveReview(a.statePath, a.review)
+	return a.saveAndResult(filePath, model.CommentRootLine(a.commentsFor(filePath), commentID))
 }
 
-func (a *App) ReactivateComment(filePath string, commentID string) error {
+func (a *App) ReactivateComment(filePath string, commentID string) (string, error) {
 	comment := a.findComment(filePath, commentID)
 	if comment == nil {
-		return fmt.Errorf("comment not found: %s", commentID)
+		return "", fmt.Errorf("comment not found: %s", commentID)
 	}
 
 	comment.Reactivate()
 
-	return SaveReview(a.statePath, a.review)
+	return a.saveAndResult(filePath, model.CommentRootLine(a.commentsFor(filePath), commentID))
 }
 
-func (a *App) DeleteComment(filePath string, commentID string) error {
+func (a *App) DeleteComment(filePath string, commentID string) (string, error) {
+	// capture the affected thread's line before removing the comment, since the
+	// root line cannot be looked up once it is gone.
+	line := model.CommentRootLine(a.commentsFor(filePath), commentID)
+
 	if filePath == "" {
 		a.review.DeleteComment(commentID)
-		return SaveReview(a.statePath, a.review)
+		return a.saveAndResult("", -1)
 	}
 
 	fileDiff := a.review.GetFileDiff(filePath)
 	if fileDiff == nil {
-		return fmt.Errorf("file not found: %s", filePath)
+		return "", fmt.Errorf("file not found: %s", filePath)
 	}
 
 	fileDiff.DeleteComment(commentID)
 
-	return SaveReview(a.statePath, a.review)
+	return a.saveAndResult(filePath, line)
 }
 
 func main() {

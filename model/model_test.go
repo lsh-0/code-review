@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -309,7 +310,7 @@ func TestFileDiffAddCommentWithContext(t *testing.T) {
 func TestReviewMarkFile(t *testing.T) {
 	given := NewReview("/repo", "branch", "main")
 
-	given.MarkFile("file.go")
+	given.MarkFile("file.go", "sha1")
 
 	expected := true
 	actual := given.IsFileMarked("file.go")
@@ -325,8 +326,8 @@ func TestReviewMarkFile(t *testing.T) {
 func TestReviewMarkFileIsIdempotent(t *testing.T) {
 	given := NewReview("/repo", "branch", "main")
 
-	given.MarkFile("file.go")
-	given.MarkFile("file.go")
+	given.MarkFile("file.go", "sha1")
+	given.MarkFile("file.go", "sha1")
 
 	expected := 1
 	actual := len(given.MarkedFiles)
@@ -337,7 +338,7 @@ func TestReviewMarkFileIsIdempotent(t *testing.T) {
 
 func TestReviewUnmarkFile(t *testing.T) {
 	given := NewReview("/repo", "branch", "main")
-	given.MarkFile("file.go")
+	given.MarkFile("file.go", "sha1")
 
 	given.UnmarkFile("file.go")
 
@@ -354,7 +355,7 @@ func TestReviewUnmarkFile(t *testing.T) {
 
 func TestReviewUnmarkAbsentFileIsNoOp(t *testing.T) {
 	given := NewReview("/repo", "branch", "main")
-	given.MarkFile("kept.go")
+	given.MarkFile("kept.go", "sha1")
 
 	given.UnmarkFile("never-marked.go")
 
@@ -529,5 +530,149 @@ func TestReviewCommentsInGetAllComments(t *testing.T) {
 	expected := 2
 	if len(all) != expected {
 		t.Errorf("expected %d comments across file and review, got %d", expected, len(all))
+	}
+}
+
+func TestEvictChangedMarksUnchangedStays(t *testing.T) {
+	given := NewReview("/repo", "feature", "main")
+	given.MarkFile("a.go", "sha-a")
+
+	// the current SHA matches the stored one: the file is unchanged, so kept.
+	given.EvictChangedMarks(map[string]string{"a.go": "sha-a"})
+
+	if !given.IsFileMarked("a.go") {
+		t.Error("expected an unchanged marked file to stay marked")
+	}
+}
+
+func TestEvictChangedMarksChangedEvicts(t *testing.T) {
+	given := NewReview("/repo", "feature", "main")
+	given.MarkFile("a.go", "sha-a")
+	given.MarkFile("b.go", "sha-b")
+
+	// a.go's content changed (different SHA); b.go did not.
+	given.EvictChangedMarks(map[string]string{"a.go": "sha-a-changed", "b.go": "sha-b"})
+
+	if given.IsFileMarked("a.go") {
+		t.Error("expected a changed marked file to be evicted")
+	}
+	if !given.IsFileMarked("b.go") {
+		t.Error("expected an unchanged marked file to stay marked")
+	}
+}
+
+func TestEvictChangedMarksDeletedEvicts(t *testing.T) {
+	given := NewReview("/repo", "feature", "main")
+	given.MarkFile("gone.go", "sha-gone")
+
+	// gone.go is absent from the current SHAs: deleted at this revision, evict.
+	given.EvictChangedMarks(map[string]string{})
+
+	if given.IsFileMarked("gone.go") {
+		t.Error("expected a deleted marked file to be evicted")
+	}
+}
+
+func TestEvictChangedMarksLegacyBackfillsAndStays(t *testing.T) {
+	given := NewReview("/repo", "feature", "main")
+	// a legacy mark carries no blob SHA.
+	given.MarkFile("a.go", "")
+
+	given.EvictChangedMarks(map[string]string{"a.go": "sha-a"})
+
+	if !given.IsFileMarked("a.go") {
+		t.Fatal("expected a legacy mark to be backfilled and kept on first open")
+	}
+	if given.MarkedFiles[0].Blob != "sha-a" {
+		t.Errorf("expected legacy mark backfilled to sha-a, got %q", given.MarkedFiles[0].Blob)
+	}
+
+	// once backfilled, a later content change evicts it.
+	given.EvictChangedMarks(map[string]string{"a.go": "sha-a-changed"})
+	if given.IsFileMarked("a.go") {
+		t.Error("expected a backfilled mark to evict when the file later changes")
+	}
+}
+
+func TestFileCommentStatus(t *testing.T) {
+	active := &Comment{ID: "1", Status: CommentStatusActive}
+	resolved := &Comment{ID: "2", Status: CommentStatusResolved}
+	ignored := &Comment{ID: "3", Status: CommentStatusIgnored}
+	reply := &Comment{ID: "4", ParentID: "2", Status: CommentStatusActive}
+
+	cases := []struct {
+		given    []*Comment
+		expected string
+	}{
+		{nil, "none"},
+		{[]*Comment{active}, "active"},
+		{[]*Comment{resolved}, "resolved"},
+		{[]*Comment{ignored}, "ignored"},
+		{[]*Comment{active, resolved}, "active"},
+		{[]*Comment{resolved, ignored}, "ignored"},
+		// a reply's status never counts; only the resolved root does.
+		{[]*Comment{resolved, reply}, "resolved"},
+	}
+
+	for _, c := range cases {
+		actual := FileCommentStatus(c.given)
+		if actual != c.expected {
+			t.Errorf("FileCommentStatus(%v) = %q, want %q", c.given, actual, c.expected)
+		}
+	}
+}
+
+func TestCommentRootLine(t *testing.T) {
+	root := &Comment{ID: "root", LineNumber: 42}
+	reply := &Comment{ID: "reply", ParentID: "root", LineNumber: 0}
+	comments := []*Comment{root, reply}
+
+	if actual := CommentRootLine(comments, "root"); actual != 42 {
+		t.Errorf("root line = %d, want 42", actual)
+	}
+	// a reply reports its root's line, not its own.
+	if actual := CommentRootLine(comments, "reply"); actual != 42 {
+		t.Errorf("reply's root line = %d, want 42", actual)
+	}
+	// an absent comment reports 0.
+	if actual := CommentRootLine(comments, "missing"); actual != 0 {
+		t.Errorf("missing comment line = %d, want 0", actual)
+	}
+}
+
+func TestMarkedFilesUnmarshalNewShape(t *testing.T) {
+	var actual MarkedFiles
+	given := `[{"path":"a.go","blob":"sha-a"},{"path":"b.go"}]`
+	if err := json.Unmarshal([]byte(given), &actual); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(actual) != 2 {
+		t.Fatalf("expected 2 marks, got %d", len(actual))
+	}
+	if actual[0].Path != "a.go" || actual[0].Blob != "sha-a" {
+		t.Errorf("first mark = %+v, want {a.go sha-a}", actual[0])
+	}
+	if actual[1].Path != "b.go" || actual[1].Blob != "" {
+		t.Errorf("second mark = %+v, want {b.go }", actual[1])
+	}
+}
+
+func TestMarkedFilesUnmarshalLegacyShape(t *testing.T) {
+	var actual MarkedFiles
+	given := `["a.go","b.go"]`
+	if err := json.Unmarshal([]byte(given), &actual); err != nil {
+		t.Fatalf("unmarshal of legacy bare-path form failed: %v", err)
+	}
+	if len(actual) != 2 {
+		t.Fatalf("expected 2 marks, got %d", len(actual))
+	}
+	// legacy paths become records with an empty blob, flagged for backfill.
+	for _, mark := range actual {
+		if mark.Blob != "" {
+			t.Errorf("expected legacy mark %q to have empty blob, got %q", mark.Path, mark.Blob)
+		}
+	}
+	if actual[0].Path != "a.go" || actual[1].Path != "b.go" {
+		t.Errorf("legacy paths not preserved: %+v", actual)
 	}
 }

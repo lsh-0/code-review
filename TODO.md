@@ -63,16 +63,6 @@ Distribution today assumes a local build. An AppImage covers x86_64
 users without a toolchain; ARM support needs investigation because of
 the GopherJS/webkit constraints.
 ---
-title: Preserve page state when adding a comment
-added: 2026-06-13
-effort: medium
-tags: frontend, ui, comments
-summary: Submitting a comment discards expanded context lines and scrolls the window to an unfamiliar position
-
-Adding a comment re-renders the diff, dropping expanded lines and other
-page state, so the viewport jumps. The expand-context feature made this
-more noticeable.
----
 title: Add a right-click context menu
 added: 2026-06-13
 effort: medium
@@ -93,24 +83,6 @@ The instruction prose on the agent's interaction with the state (when to
 reply, when to unmark, working unsupervised) was sharpened in
 `statefile-usage.md`. The remaining piece is the CLI: direct actions
 would be less error-prone than hand-editing the JSON.
----
-title: Review the refresh implementation
-added: 2026-06-14
-updated: 2026-06-15
-effort: medium
-tags: frontend, backend
-summary: Refresh has accreted fixes and feels hacky; review how it reloads state and rework it holistically
-
-Refresh started as a partial reload and was patched repeatedly (marked
-files, then the diff/file list). Worth a deliberate pass over the whole
-refresh path rather than more piecemeal fixes.
-
-Concrete defect found: `selectFile` calls `RefreshState` on every file
-click, and commit `9e5311c` made `RefreshState` shell out to `git diff`
-and re-parse, so each click now pays a synchronous subprocess — the
-likely cause of the pause on first body display. State-reread-on-select
-should reload only review state (comments/marks); the diff recompute
-belongs on the explicit refresh button.
 ---
 title: Move file selection with up/down arrow keys
 added: 2026-06-14
@@ -145,6 +117,7 @@ summary: Pressing Ctrl-f does nothing; it should search the page for matches and
 ---
 title: Unmark files changed by new commits on refresh
 added: 2026-06-16
+updated: 2026-06-18
 effort: medium
 tags: backend, frontend
 summary: On refresh, reconcile the marked-file list against new commits since the current view, dropping files that changed or were deleted
@@ -152,6 +125,12 @@ summary: On refresh, reconcile the marked-file list against new commits since th
 When new commits land, a file the reviewer marked may have changed and
 needs revisiting, so it should drop off the marked list; deleted files
 should drop too. Newly added files simply never appear there.
+
+Partly done: `RecomputeDiff` now reconciles marks against the diff-delta
+within a running session. The between-session case (file changed while
+the app was closed) is the subject of the `durable-file-marks` OpenSpec
+change, which stores a git blob SHA per mark; close this item once that
+lands.
 ---
 title: Make the file-list/diff divider draggable to resize the panes
 added: 2026-06-16
@@ -174,6 +153,7 @@ a "show hidden" control would reveal which files were suppressed.
 ---
 title: Warn about uncommitted working-tree changes with banners
 added: 2026-06-17
+updated: 2026-06-18
 effort: medium
 tags: frontend, backend, ui
 summary: A full-width info banner counting modified/deleted tracked files, plus a per-file warning banner (with a link to open the file in the reviewer's diff tool) when the viewed file has local changes not reflected in the diff
@@ -185,4 +165,23 @@ changes also shows an orange per-file banner ("file contains uncommitted
 changes") with an inline link to open it in the reviewer's configured
 diff tool — via `git difftool` (honours their `diff.tool`, e.g. meld),
 since `xdg-open` opens a single file and cannot diff.
----
+
+Backend groundwork done: `GetWorkingTreeStatus` (`backend/gitquery.go`)
+returns tracked modified/deleted files (untracked excluded) and is bound
+to the frontend. Remaining: render the two banners and wire the difftool
+link.
+    ---
+    title: Profile slow startup and Refresh-button pauses
+    added: 2026-06-18
+    effort: medium
+    tags: backend, performance 
+    summary: The ~5s startup pause and ~2s Refresh pause both stem from the synchronous git diff; profile and consider moving it off the UI path
+
+    Splitting RefreshState removed the per-file-click git cost (file
+    selection is now instant), but two pauses remain: ~5s on app startup
+    (RecomputeDiff runs a single git diff before the window paints, plus
+    Wails/WebKit init) and ~2s on the Refresh button (the same git diff,
+    now isolated to that explicit action). Profile to attribute the cost,
+    then consider running the diff off the UI path or showing progress.
+    ---
+

@@ -6,6 +6,7 @@ import (
 	"code-review/model"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -24,7 +25,7 @@ func TestApp_CommentStatusChanges(t *testing.T) {
 	content := "test comment"
 	lineNumber := 10
 
-	err := app.AddComment(filePath, content, lineNumber, "before", "line", "after")
+	_, err := app.AddComment(filePath, content, lineNumber, "before", "line", "after")
 	if err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
@@ -45,7 +46,7 @@ func TestApp_CommentStatusChanges(t *testing.T) {
 		t.Errorf("expected status Active, got %v", comment.Status)
 	}
 
-	err = app.ResolveComment(filePath, commentID)
+	_, err = app.ResolveComment(filePath, commentID)
 	if err != nil {
 		t.Fatalf("ResolveComment failed: %v", err)
 	}
@@ -59,7 +60,7 @@ func TestApp_CommentStatusChanges(t *testing.T) {
 		t.Errorf("state file not saved after ResolveComment: %v", err)
 	}
 
-	err = app.ReactivateComment(filePath, commentID)
+	_, err = app.ReactivateComment(filePath, commentID)
 	if err != nil {
 		t.Fatalf("ReactivateComment failed: %v", err)
 	}
@@ -68,7 +69,7 @@ func TestApp_CommentStatusChanges(t *testing.T) {
 		t.Errorf("expected status Active after reactivate, got %v", comment.Status)
 	}
 
-	err = app.IgnoreComment(filePath, commentID)
+	_, err = app.IgnoreComment(filePath, commentID)
 	if err != nil {
 		t.Fatalf("IgnoreComment failed: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestApp_CommentStatusChanges(t *testing.T) {
 		t.Errorf("expected status Ignored, got %v", comment.Status)
 	}
 
-	err = app.DeleteComment(filePath, commentID)
+	_, err = app.DeleteComment(filePath, commentID)
 	if err != nil {
 		t.Fatalf("DeleteComment failed: %v", err)
 	}
@@ -97,29 +98,29 @@ func TestApp_CommentStatusErrors(t *testing.T) {
 		statePath: filepath.Join(tmpDir, "test.json"),
 	}
 
-	err := app.ResolveComment("nonexistent.go", "fake-id")
+	_, err := app.ResolveComment("nonexistent.go", "fake-id")
 	if err == nil {
 		t.Error("expected error for nonexistent file, got nil")
 	}
 
 	app.review.AddFileDiff("test.go")
 
-	err = app.ResolveComment("test.go", "fake-id")
+	_, err = app.ResolveComment("test.go", "fake-id")
 	if err == nil {
 		t.Error("expected error for nonexistent comment, got nil")
 	}
 
-	err = app.IgnoreComment("test.go", "fake-id")
+	_, err = app.IgnoreComment("test.go", "fake-id")
 	if err == nil {
 		t.Error("expected error for nonexistent comment, got nil")
 	}
 
-	err = app.ReactivateComment("test.go", "fake-id")
+	_, err = app.ReactivateComment("test.go", "fake-id")
 	if err == nil {
 		t.Error("expected error for nonexistent comment, got nil")
 	}
 
-	err = app.UpdateComment("test.go", "fake-id", "new content")
+	_, err = app.UpdateComment("test.go", "fake-id", "new content")
 	if err == nil {
 		t.Error("expected error for nonexistent comment, got nil")
 	}
@@ -185,7 +186,7 @@ func TestApp_UpdateComment(t *testing.T) {
 	originalContent := "original comment"
 	lineNumber := 10
 
-	err := app.AddComment(filePath, originalContent, lineNumber, "", "", "")
+	_, err := app.AddComment(filePath, originalContent, lineNumber, "", "", "")
 	if err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
@@ -194,7 +195,7 @@ func TestApp_UpdateComment(t *testing.T) {
 	commentID := fileDiff.Comments[0].ID
 
 	newContent := "updated comment"
-	err = app.UpdateComment(filePath, commentID, newContent)
+	_, err = app.UpdateComment(filePath, commentID, newContent)
 	if err != nil {
 		t.Fatalf("UpdateComment failed: %v", err)
 	}
@@ -222,10 +223,10 @@ func TestApp_GetCommentedFiles(t *testing.T) {
 	}
 
 	// comments on a.go and c.go only; b.go stays comment-free and must be omitted.
-	if err := app.AddComment("c.go", "third", 3, "", "", ""); err != nil {
+	if _, err := app.AddComment("c.go", "third", 3, "", "", ""); err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
-	if err := app.AddComment("a.go", "first", 1, "", "", ""); err != nil {
+	if _, err := app.AddComment("a.go", "first", 1, "", "", ""); err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
 
@@ -287,7 +288,7 @@ func TestApp_ReviewLevelComments(t *testing.T) {
 	}
 
 	// add a review-level comment (no file anchor).
-	if err := app.AddReviewComment("overall feedback"); err != nil {
+	if _, err := app.AddReviewComment("overall feedback"); err != nil {
 		t.Fatalf("AddReviewComment failed: %v", err)
 	}
 	if len(app.review.Comments) != 1 {
@@ -296,10 +297,10 @@ func TestApp_ReviewLevelComments(t *testing.T) {
 	commentID := app.review.Comments[0].ID
 
 	// the empty filePath routes status/reply/delete to the review level.
-	if err := app.AddReply("", commentID, "a reply"); err != nil {
+	if _, err := app.AddReply("", commentID, "a reply"); err != nil {
 		t.Fatalf("AddReply (review-level) failed: %v", err)
 	}
-	if err := app.ResolveComment("", commentID); err != nil {
+	if _, err := app.ResolveComment("", commentID); err != nil {
 		t.Fatalf("ResolveComment (review-level) failed: %v", err)
 	}
 	if app.review.GetComment(commentID).Status != model.CommentStatusResolved {
@@ -315,7 +316,7 @@ func TestApp_ReviewLevelComments(t *testing.T) {
 	}
 
 	// deleting the root cascades to the reply.
-	if err := app.DeleteComment("", commentID); err != nil {
+	if _, err := app.DeleteComment("", commentID); err != nil {
 		t.Fatalf("DeleteComment (review-level) failed: %v", err)
 	}
 	if len(app.review.Comments) != 0 {
@@ -349,5 +350,250 @@ func TestApp_GetReviewComments(t *testing.T) {
 	}
 	if len(comments) != 1 || comments[0].Content != "note" {
 		t.Errorf("expected one review comment 'note', got %+v", comments)
+	}
+}
+
+// RecomputeDiff is the only path that shells out to git: it must populate
+// diffFiles from the branch diff.
+func TestApp_RecomputeDiff_PopulatesFromGit(t *testing.T) {
+	tmpDir := setupTestRepo(t)
+
+	baseBranch, err := GetCurrentBranch(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to get base branch: %v", err)
+	}
+
+	checkout := exec.Command("git", "checkout", "-b", "feature")
+	checkout.Dir = tmpDir
+	if err := checkout.Run(); err != nil {
+		t.Fatalf("failed to create feature branch: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "test.txt"), []byte("initial content\nadded line\n"), 0644); err != nil {
+		t.Fatalf("failed to modify file: %v", err)
+	}
+	add := exec.Command("git", "add", "test.txt")
+	add.Dir = tmpDir
+	if err := add.Run(); err != nil {
+		t.Fatalf("failed to add file: %v", err)
+	}
+	commit := exec.Command("git", "commit", "-m", "change")
+	commit.Dir = tmpDir
+	if err := commit.Run(); err != nil {
+		t.Fatalf("failed to commit: %v", err)
+	}
+
+	headBranch, _ := GetCurrentBranch(tmpDir)
+
+	app := &App{
+		review:    model.NewReview(tmpDir, headBranch, baseBranch),
+		repoPath:  tmpDir,
+		dataDir:   t.TempDir(),
+		statePath: filepath.Join(t.TempDir(), "state.json"),
+	}
+
+	if err := app.RecomputeDiff(); err != nil {
+		t.Fatalf("RecomputeDiff failed: %v", err)
+	}
+
+	if len(app.diffFiles) == 0 {
+		t.Fatal("expected RecomputeDiff to populate diffFiles from the git diff")
+	}
+	if app.diffFiles[0].Path != "test.txt" {
+		t.Errorf("expected diff for test.txt, got %q", app.diffFiles[0].Path)
+	}
+}
+
+// ReloadReview is the cheap reload: it re-reads the state JSON into a.review and
+// does no git work, leaving the already-computed diff untouched. A path that is
+// not a git repository proves no git subprocess ran.
+func TestApp_ReloadReview_NoGit(t *testing.T) {
+	tmpDir := t.TempDir()
+	statePath := filepath.Join(tmpDir, "state.json")
+
+	// persist a review with one marked file to disk.
+	onDisk := model.NewReview("/not/a/repo", "feature", "main")
+	onDisk.MarkFile("a.go", "sha-a")
+	if err := SaveReview(statePath, onDisk); err != nil {
+		t.Fatalf("failed to seed state file: %v", err)
+	}
+
+	// the app starts with a different in-memory review and a sentinel diff that
+	// ReloadReview must not disturb.
+	sentinel := []DiffFile{{Path: "sentinel.go"}}
+	app := &App{
+		review:    model.NewReview("/not/a/repo", "feature", "main"),
+		repoPath:  "/not/a/repo", // not a git repo: any git call would fail
+		dataDir:   tmpDir,
+		statePath: statePath,
+		diffFiles: sentinel,
+	}
+
+	if err := app.ReloadReview(); err != nil {
+		t.Fatalf("ReloadReview failed: %v", err)
+	}
+
+	if !app.review.IsFileMarked("a.go") {
+		t.Error("expected ReloadReview to load the marked file from disk")
+	}
+	if len(app.diffFiles) != 1 || app.diffFiles[0].Path != "sentinel.go" {
+		t.Errorf("expected ReloadReview to leave diffFiles untouched, got %+v", app.diffFiles)
+	}
+}
+
+func TestApp_MutationResultShape(t *testing.T) {
+	tmpDir := t.TempDir()
+	app := &App{
+		review:    model.NewReview("/tmp/repo", "feature", "main"),
+		repoPath:  "/tmp/repo",
+		dataDir:   tmpDir,
+		statePath: filepath.Join(tmpDir, "test.json"),
+		userName:  "Test User",
+	}
+
+	// adding a comment returns a result anchored at its line, carrying the file's
+	// comments and an active status.
+	raw, err := app.AddComment("a.go", "note", 7, "", "", "")
+	if err != nil {
+		t.Fatalf("AddComment failed: %v", err)
+	}
+	var added CommentMutationResult
+	if err := json.Unmarshal([]byte(raw), &added); err != nil {
+		t.Fatalf("unmarshal result failed: %v", err)
+	}
+	if added.FilePath != "a.go" || added.LineNumber != 7 {
+		t.Errorf("expected a.go:7, got %s:%d", added.FilePath, added.LineNumber)
+	}
+	if added.FileStatus != "active" {
+		t.Errorf("expected active status, got %q", added.FileStatus)
+	}
+	if len(added.Comments) != 1 {
+		t.Fatalf("expected 1 comment in result, got %d", len(added.Comments))
+	}
+	commentID := added.Comments[0].ID
+
+	// resolving anchors at the same root line and reports resolved.
+	raw, err = app.ResolveComment("a.go", commentID)
+	if err != nil {
+		t.Fatalf("ResolveComment failed: %v", err)
+	}
+	var resolved CommentMutationResult
+	json.Unmarshal([]byte(raw), &resolved)
+	if resolved.LineNumber != 7 {
+		t.Errorf("expected resolve anchored at line 7, got %d", resolved.LineNumber)
+	}
+	if resolved.FileStatus != "resolved" {
+		t.Errorf("expected resolved status, got %q", resolved.FileStatus)
+	}
+
+	// a review-level comment reports an empty file path and line -1.
+	raw, err = app.AddReviewComment("overall")
+	if err != nil {
+		t.Fatalf("AddReviewComment failed: %v", err)
+	}
+	var review CommentMutationResult
+	json.Unmarshal([]byte(raw), &review)
+	if review.FilePath != "" || review.LineNumber != -1 {
+		t.Errorf("expected review-level result (\"\":-1), got %q:%d", review.FilePath, review.LineNumber)
+	}
+
+	// deleting reports the line of the now-removed thread and clears the file.
+	raw, err = app.DeleteComment("a.go", commentID)
+	if err != nil {
+		t.Fatalf("DeleteComment failed: %v", err)
+	}
+	var deleted CommentMutationResult
+	json.Unmarshal([]byte(raw), &deleted)
+	if deleted.LineNumber != 7 {
+		t.Errorf("expected delete anchored at line 7, got %d", deleted.LineNumber)
+	}
+	if deleted.FileStatus != "none" {
+		t.Errorf("expected none status after delete, got %q", deleted.FileStatus)
+	}
+}
+
+// SetFileMarked stores the file's blob SHA at mark-time, so the mark is durable.
+func TestApp_SetFileMarked_StoresBlob(t *testing.T) {
+	tmpDir := setupTestRepo(t)
+	branch, err := GetCurrentBranch(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to get branch: %v", err)
+	}
+
+	app := &App{
+		review:    model.NewReview(tmpDir, branch, branch),
+		repoPath:  tmpDir,
+		dataDir:   t.TempDir(),
+		statePath: filepath.Join(t.TempDir(), "state.json"),
+	}
+
+	if err := app.SetFileMarked("test.txt", true); err != nil {
+		t.Fatalf("SetFileMarked failed: %v", err)
+	}
+
+	if len(app.review.MarkedFiles) != 1 {
+		t.Fatalf("expected 1 mark, got %d", len(app.review.MarkedFiles))
+	}
+	if app.review.MarkedFiles[0].Blob == "" {
+		t.Error("expected the stored mark to carry a non-empty blob SHA")
+	}
+}
+
+// a committed change to a marked file evicts the mark on RecomputeDiff, and this
+// holds even when the diff is recomputed fresh (the restart case).
+func TestApp_RecomputeDiff_EvictsChangedMark(t *testing.T) {
+	tmpDir := setupTestRepo(t)
+	base, err := GetCurrentBranch(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to get base branch: %v", err)
+	}
+
+	// branch and add a committed change so there is a diff to compute.
+	checkout := exec.Command("git", "checkout", "-b", "feature")
+	checkout.Dir = tmpDir
+	checkout.Run()
+	os.WriteFile(filepath.Join(tmpDir, "test.txt"), []byte("v2\n"), 0644)
+	add := exec.Command("git", "add", "test.txt")
+	add.Dir = tmpDir
+	add.Run()
+	commit := exec.Command("git", "commit", "-m", "v2")
+	commit.Dir = tmpDir
+	commit.Run()
+	head, _ := GetCurrentBranch(tmpDir)
+
+	app := &App{
+		review:    model.NewReview(tmpDir, head, base),
+		repoPath:  tmpDir,
+		dataDir:   t.TempDir(),
+		statePath: filepath.Join(t.TempDir(), "state.json"),
+	}
+
+	// mark the file at its current content.
+	if err := app.SetFileMarked("test.txt", true); err != nil {
+		t.Fatalf("SetFileMarked failed: %v", err)
+	}
+
+	// a recompute with no change keeps the mark.
+	if err := app.RecomputeDiff(); err != nil {
+		t.Fatalf("RecomputeDiff failed: %v", err)
+	}
+	if !app.review.IsFileMarked("test.txt") {
+		t.Fatal("expected an unchanged marked file to stay marked")
+	}
+
+	// now commit a further change to the file, then recompute: the mark evicts.
+	os.WriteFile(filepath.Join(tmpDir, "test.txt"), []byte("v3\n"), 0644)
+	add2 := exec.Command("git", "add", "test.txt")
+	add2.Dir = tmpDir
+	add2.Run()
+	commit2 := exec.Command("git", "commit", "-m", "v3")
+	commit2.Dir = tmpDir
+	commit2.Run()
+
+	if err := app.RecomputeDiff(); err != nil {
+		t.Fatalf("RecomputeDiff after change failed: %v", err)
+	}
+	if app.review.IsFileMarked("test.txt") {
+		t.Error("expected a marked file changed by a new commit to be evicted")
 	}
 }

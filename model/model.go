@@ -3,6 +3,7 @@ package model
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 )
 
 type CommentStatus string
@@ -44,8 +45,45 @@ type Review struct {
 	// Comments are review-level notes not anchored to any file or line — overall
 	// feedback. They behave exactly like file comments (status, replies) but
 	// carry no file path, line number, or context.
-	Comments    []*Comment `json:"comments,omitempty"`
-	MarkedFiles []string   `json:"marked_files"`
+	Comments    []*Comment  `json:"comments,omitempty"`
+	MarkedFiles MarkedFiles `json:"marked_files"`
+}
+
+// a file the reviewer has marked as done, recording the git blob SHA of the
+// file's content at the review's source-branch HEAD when it was marked. The SHA
+// lets a later open detect that the file changed (different SHA) or was deleted
+// (no current SHA) and drop the mark. An empty `Blob` is a legacy mark awaiting
+// backfill.
+type FileMark struct {
+	Path string `json:"path"`
+	Blob string `json:"blob,omitempty"`
+}
+
+// the marked-files set. It serialises as a list of `FileMark` records, but
+// unmarshals from either the new record list or the legacy bare-path list, so
+// old state files load without a migration step.
+type MarkedFiles []FileMark
+
+// accept both the new `[{"path":…,"blob":…}]` form and the legacy `["a.go"]`
+// form. A legacy path becomes a record with an empty blob, flagged for backfill
+// on first open.
+func (m *MarkedFiles) UnmarshalJSON(data []byte) error {
+	var records []FileMark
+	if err := json.Unmarshal(data, &records); err == nil {
+		*m = records
+		return nil
+	}
+
+	var paths []string
+	if err := json.Unmarshal(data, &paths); err != nil {
+		return err
+	}
+	legacy := make([]FileMark, len(paths))
+	for i, path := range paths {
+		legacy[i] = FileMark{Path: path}
+	}
+	*m = legacy
+	return nil
 }
 
 func GenerateID() string {
@@ -116,6 +154,63 @@ func appendReply(comments []*Comment, parentID string, content string, author st
 	reply := NewComment(content, 0, author)
 	reply.ParentID = root
 	return append(comments, reply), reply
+}
+
+// the aggregate review status of a file from its flat comment list, matching
+// the file-list indicator: `active` if any root is active, else `resolved` if
+// every root is resolved, else `ignored` if any root is ignored, else `none`.
+// Replies carry no status and are ignored. Pure, so both the backend (building
+// a mutation result) and the frontend (rendering the file pill) share one
+// definition rather than duplicating the rules.
+func FileCommentStatus(comments []*Comment) string {
+	hasActive := false
+	hasIgnored := false
+	allResolved := true
+	rootCount := 0
+
+	for _, comment := range comments {
+		if comment.ParentID != "" {
+			continue
+		}
+		rootCount++
+		switch comment.Status {
+		case CommentStatusActive:
+			hasActive = true
+			allResolved = false
+		case CommentStatusIgnored:
+			hasIgnored = true
+			allResolved = false
+		}
+	}
+
+	if hasActive {
+		return "active"
+	}
+	if allResolved && rootCount > 0 {
+		return "resolved"
+	}
+	if hasIgnored {
+		return "ignored"
+	}
+	return "none"
+}
+
+// the line number of a comment's root within a flat comment list. For a root
+// comment that is its own line; for a reply it is the root's line. Returns 0 if
+// the comment is absent or its root is missing (review-level comments carry no
+// line and report 0).
+func CommentRootLine(comments []*Comment, commentID string) int {
+	comment := findComment(comments, commentID)
+	if comment == nil {
+		return 0
+	}
+	if comment.ParentID == "" {
+		return comment.LineNumber
+	}
+	if root := findComment(comments, comment.ParentID); root != nil {
+		return root.LineNumber
+	}
+	return 0
 }
 
 // remove a comment by id from a flat comment list, returning the new list.
@@ -227,28 +322,64 @@ func (r *Review) DeleteComment(commentID string) {
 // report whether `filePath` is in the marked-files set.
 func (r *Review) IsFileMarked(filePath string) bool {
 	for _, marked := range r.MarkedFiles {
-		if marked == filePath {
+		if marked.Path == filePath {
 			return true
 		}
 	}
 	return false
 }
 
-// add `filePath` to the marked-files set, with no effect if already present.
-func (r *Review) MarkFile(filePath string) {
+// add `filePath` to the marked-files set with the blob SHA of its content at
+// mark-time, with no effect if already present. The SHA is later compared
+// against the file's current content to detect a change.
+func (r *Review) MarkFile(filePath string, blob string) {
 	if !r.IsFileMarked(filePath) {
-		r.MarkedFiles = append(r.MarkedFiles, filePath)
+		r.MarkedFiles = append(r.MarkedFiles, FileMark{Path: filePath, Blob: blob})
 	}
 }
 
 // remove `filePath` from the marked-files set, with no effect if absent.
 func (r *Review) UnmarkFile(filePath string) {
 	for i, marked := range r.MarkedFiles {
-		if marked == filePath {
+		if marked.Path == filePath {
 			r.MarkedFiles = append(r.MarkedFiles[:i], r.MarkedFiles[i+1:]...)
 			return
 		}
 	}
+}
+
+// reconcile the marked-files set against the files' current blob SHAs at the
+// source-branch HEAD. `current` maps a path to its present SHA; a path absent
+// from the map has been deleted at that revision. For each mark: a legacy mark
+// with an empty stored blob is backfilled with the current SHA and kept (its
+// baseline is established without evicting it); a mark whose file is deleted or
+// whose SHA differs from the stored one is evicted; an unchanged mark is kept.
+// Pure: it mutates only the marked-files slice from its inputs, so it is
+// testable without git.
+func (r *Review) EvictChangedMarks(current map[string]string) {
+	if len(r.MarkedFiles) == 0 {
+		return
+	}
+
+	kept := make([]FileMark, 0, len(r.MarkedFiles))
+	for _, marked := range r.MarkedFiles {
+		sha, present := current[marked.Path]
+		if !present {
+			// deleted at this revision: evict.
+			continue
+		}
+		if marked.Blob == "" {
+			// legacy mark: adopt the current SHA as the baseline and keep.
+			marked.Blob = sha
+			kept = append(kept, marked)
+			continue
+		}
+		if marked.Blob == sha {
+			kept = append(kept, marked)
+		}
+		// differing SHA: changed since marked, evict.
+	}
+	r.MarkedFiles = kept
 }
 
 func (r *Review) GetAllComments() []*Comment {

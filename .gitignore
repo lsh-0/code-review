@@ -4,3 +4,7 @@ wailsjs/
 .coverage/
 assets/review.js
 *.log
+
+# stray module binaries from `go build` without -o
+backend/backend
+frontend/frontend
