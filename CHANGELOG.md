@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A "Review overview" pane, reached from the end of the file list, that stacks every commented file and its feedback into
+  one view so a long review can be taken in at a glance; clicking a file's heading opens it.
+
 ### Changed
 
 - Replies are now first-class comments: each carries a parent reference and gains the same edit and delete actions as
@@ -23,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The bottom "expand 20 lines" control is disabled up front when a hunk already reaches the end of the file, instead of
   only after a click reveals there is nothing below.
 - Re-clicking the file already being viewed no longer re-renders the diff and resets the scroll position.
+- Unchanged context between two hunks can now be revealed from either side: each gap has both an upward and a downward
+  "expand" control that converge and merge the hunks when they meet. Previously only the file's last hunk had a downward
+  control, and a hunk ending in deletions could wrongly disable it.
 
 ## [0.5.0] - 2026-06-13
 
