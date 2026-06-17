@@ -307,6 +307,32 @@ header {
     color: var(--color-hunk-text);
 }
 
+/* the review-level feedback section heads the overview and is not a file, so
+   its header is not clickable. */
+.overview-review .overview-file-header {
+    cursor: default;
+}
+
+.overview-review .overview-file-header:hover {
+    text-decoration: none;
+}
+
+.overview-add-comment {
+    margin: 0.5rem 0 1rem;
+    padding: 0.3rem 0.8rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    color: var(--color-accent);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.overview-add-comment:hover {
+    background: var(--color-bg-subtle);
+}
+
 #diff-view {
     flex: 1;
     overflow-y: auto;

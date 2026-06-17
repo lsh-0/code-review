@@ -275,3 +275,79 @@ func TestApp_GetCommentedFilesEmpty(t *testing.T) {
 		t.Errorf("expected empty array, got %q", data)
 	}
 }
+
+func TestApp_ReviewLevelComments(t *testing.T) {
+	tmpDir := t.TempDir()
+	app := &App{
+		review:    model.NewReview("/tmp/repo", "feature", "main"),
+		repoPath:  "/tmp/repo",
+		dataDir:   tmpDir,
+		statePath: filepath.Join(tmpDir, "test.json"),
+		userName:  "Test User",
+	}
+
+	// add a review-level comment (no file anchor).
+	if err := app.AddReviewComment("overall feedback"); err != nil {
+		t.Fatalf("AddReviewComment failed: %v", err)
+	}
+	if len(app.review.Comments) != 1 {
+		t.Fatalf("expected 1 review comment, got %d", len(app.review.Comments))
+	}
+	commentID := app.review.Comments[0].ID
+
+	// the empty filePath routes status/reply/delete to the review level.
+	if err := app.AddReply("", commentID, "a reply"); err != nil {
+		t.Fatalf("AddReply (review-level) failed: %v", err)
+	}
+	if err := app.ResolveComment("", commentID); err != nil {
+		t.Fatalf("ResolveComment (review-level) failed: %v", err)
+	}
+	if app.review.GetComment(commentID).Status != model.CommentStatusResolved {
+		t.Errorf("expected review comment resolved, got %v", app.review.GetComment(commentID).Status)
+	}
+
+	// the state file is persisted with the review-level comment and its reply.
+	if _, err := os.Stat(app.statePath); err != nil {
+		t.Errorf("state not saved: %v", err)
+	}
+	if len(app.review.Comments) != 2 {
+		t.Errorf("expected comment plus reply, got %d", len(app.review.Comments))
+	}
+
+	// deleting the root cascades to the reply.
+	if err := app.DeleteComment("", commentID); err != nil {
+		t.Fatalf("DeleteComment (review-level) failed: %v", err)
+	}
+	if len(app.review.Comments) != 0 {
+		t.Errorf("expected cascade to empty review comments, got %d", len(app.review.Comments))
+	}
+}
+
+func TestApp_GetReviewComments(t *testing.T) {
+	tmpDir := t.TempDir()
+	app := &App{
+		review:    model.NewReview("/tmp/repo", "feature", "main"),
+		repoPath:  "/tmp/repo",
+		dataDir:   tmpDir,
+		statePath: filepath.Join(tmpDir, "test.json"),
+		userName:  "Test User",
+	}
+
+	if data, _ := app.GetReviewComments(); data != "[]" {
+		t.Errorf("expected empty array before any comment, got %q", data)
+	}
+
+	app.AddReviewComment("note")
+
+	data, err := app.GetReviewComments()
+	if err != nil {
+		t.Fatalf("GetReviewComments failed: %v", err)
+	}
+	var comments []*model.Comment
+	if err := json.Unmarshal([]byte(data), &comments); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(comments) != 1 || comments[0].Content != "note" {
+		t.Errorf("expected one review comment 'note', got %+v", comments)
+	}
+}

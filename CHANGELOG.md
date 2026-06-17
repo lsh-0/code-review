@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A "Review overview" pane, reached from the end of the file list, that stacks every commented file and its feedback into
   one view so a long review can be taken in at a glance; clicking a file's heading opens it.
+- Review-level comments for overall feedback, created from the overview and not anchored to any file or line. They behave
+  like code comments — status, replies, edit and delete — and are stored in a top-level `comments` array in the state file.
 
 ### Changed
 

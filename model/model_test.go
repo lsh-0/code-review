@@ -477,3 +477,57 @@ func TestDeleteReplyLeavesRoot(t *testing.T) {
 		t.Error("Expected reply to be deleted")
 	}
 }
+
+func TestReviewAddComment(t *testing.T) {
+	given := NewReview("/repo", "feature", "main")
+
+	comment := given.AddComment("overall this looks good", "Test User")
+
+	if comment.ParentID != "" {
+		t.Errorf("expected a root comment, got ParentID %q", comment.ParentID)
+	}
+	if comment.LineNumber != 0 {
+		t.Errorf("expected no line anchor, got line %d", comment.LineNumber)
+	}
+	if comment.Status != CommentStatusActive {
+		t.Errorf("expected active status, got %v", comment.Status)
+	}
+	if len(given.Comments) != 1 {
+		t.Errorf("expected 1 review comment, got %d", len(given.Comments))
+	}
+}
+
+func TestReviewReplyAndDeleteCascade(t *testing.T) {
+	given := NewReview("/repo", "feature", "main")
+	root := given.AddComment("root note", "Test User")
+	given.AddReply(root.ID, "a reply", "Test User")
+	other := given.AddComment("unrelated note", "Test User")
+
+	if len(given.Comments) != 3 {
+		t.Fatalf("expected 3 comments, got %d", len(given.Comments))
+	}
+
+	// deleting the root removes its reply too, leaving the unrelated comment.
+	given.DeleteComment(root.ID)
+
+	if len(given.Comments) != 1 {
+		t.Errorf("expected cascade to leave 1 comment, got %d", len(given.Comments))
+	}
+	if given.GetComment(other.ID) == nil {
+		t.Error("expected the unrelated review comment to survive")
+	}
+}
+
+func TestReviewCommentsInGetAllComments(t *testing.T) {
+	given := NewReview("/repo", "feature", "main")
+	file := given.AddFileDiff("a.go")
+	file.AddComment("file comment", 3, "Test User")
+	given.AddComment("review comment", "Test User")
+
+	all := given.GetAllComments()
+
+	expected := 2
+	if len(all) != expected {
+		t.Errorf("expected %d comments across file and review, got %d", expected, len(all))
+	}
+}

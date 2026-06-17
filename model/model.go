@@ -41,7 +41,11 @@ type Review struct {
 	SourceBranch string      `json:"source_branch"`
 	TargetBranch string      `json:"target_branch"`
 	Files        []*FileDiff `json:"files"`
-	MarkedFiles  []string    `json:"marked_files"`
+	// Comments are review-level notes not anchored to any file or line — overall
+	// feedback. They behave exactly like file comments (status, replies) but
+	// carry no file path, line number, or context.
+	Comments    []*Comment `json:"comments,omitempty"`
+	MarkedFiles []string   `json:"marked_files"`
 }
 
 func GenerateID() string {
@@ -89,6 +93,45 @@ func (c *Comment) UpdateContent(content string) {
 	c.Content = content
 }
 
+// find a comment by id within a flat comment list, or nil if absent.
+func findComment(comments []*Comment, commentID string) *Comment {
+	for _, comment := range comments {
+		if comment.ID == commentID {
+			return comment
+		}
+	}
+	return nil
+}
+
+// append a reply to `parentID` within a flat comment list and return the new
+// list and the reply. The thread stays flat: replying to a reply re-roots to
+// the same root, so a reply never becomes a grandchild. A reply carries no line
+// number or context.
+func appendReply(comments []*Comment, parentID string, content string, author string) ([]*Comment, *Comment) {
+	root := parentID
+	if parent := findComment(comments, parentID); parent != nil && parent.ParentID != "" {
+		root = parent.ParentID
+	}
+
+	reply := NewComment(content, 0, author)
+	reply.ParentID = root
+	return append(comments, reply), reply
+}
+
+// remove a comment by id from a flat comment list, returning the new list.
+// Deleting a root comment also removes every reply whose `ParentID` points at
+// it, so a removed thread leaves no orphans.
+func removeComment(comments []*Comment, commentID string) []*Comment {
+	kept := comments[:0]
+	for _, comment := range comments {
+		if comment.ID == commentID || comment.ParentID == commentID {
+			continue
+		}
+		kept = append(kept, comment)
+	}
+	return kept
+}
+
 func NewFileDiff(filePath string) *FileDiff {
 	return &FileDiff{
 		FilePath: filePath,
@@ -108,41 +151,18 @@ func (f *FileDiff) AddCommentWithContext(content string, lineNumber int, author 
 	return comment
 }
 
-// add a reply to `parentID` as a flat child comment. The thread stays flat:
-// when replying to a reply, the new reply attaches to the same root, so a
-// reply never becomes a grandchild. A reply carries no line number or context.
 func (f *FileDiff) AddReply(parentID string, content string, author string) *Comment {
-	root := parentID
-	if parent := f.GetComment(parentID); parent != nil && parent.ParentID != "" {
-		root = parent.ParentID
-	}
-
-	reply := NewComment(content, 0, author)
-	reply.ParentID = root
-	f.Comments = append(f.Comments, reply)
+	comments, reply := appendReply(f.Comments, parentID, content, author)
+	f.Comments = comments
 	return reply
 }
 
 func (f *FileDiff) GetComment(commentID string) *Comment {
-	for _, comment := range f.Comments {
-		if comment.ID == commentID {
-			return comment
-		}
-	}
-	return nil
+	return findComment(f.Comments, commentID)
 }
 
-// delete a comment by id. Deleting a root comment also deletes every reply
-// whose `ParentID` points at it, so a removed thread leaves no orphans.
 func (f *FileDiff) DeleteComment(commentID string) {
-	kept := f.Comments[:0]
-	for _, comment := range f.Comments {
-		if comment.ID == commentID || comment.ParentID == commentID {
-			continue
-		}
-		kept = append(kept, comment)
-	}
-	f.Comments = kept
+	f.Comments = removeComment(f.Comments, commentID)
 }
 
 func (f *FileDiff) GetCommentsByLine(lineNumber int) []*Comment {
@@ -182,6 +202,28 @@ func (r *Review) GetFileDiff(filePath string) *FileDiff {
 	return nil
 }
 
+// add a review-level comment: overall feedback not anchored to any file or
+// line. It carries no line number or context.
+func (r *Review) AddComment(content string, author string) *Comment {
+	comment := NewComment(content, 0, author)
+	r.Comments = append(r.Comments, comment)
+	return comment
+}
+
+func (r *Review) AddReply(parentID string, content string, author string) *Comment {
+	comments, reply := appendReply(r.Comments, parentID, content, author)
+	r.Comments = comments
+	return reply
+}
+
+func (r *Review) GetComment(commentID string) *Comment {
+	return findComment(r.Comments, commentID)
+}
+
+func (r *Review) DeleteComment(commentID string) {
+	r.Comments = removeComment(r.Comments, commentID)
+}
+
 // report whether `filePath` is in the marked-files set.
 func (r *Review) IsFileMarked(filePath string) bool {
 	for _, marked := range r.MarkedFiles {
@@ -214,6 +256,7 @@ func (r *Review) GetAllComments() []*Comment {
 	for _, file := range r.Files {
 		allComments = append(allComments, file.Comments...)
 	}
+	allComments = append(allComments, r.Comments...)
 	return allComments
 }
 

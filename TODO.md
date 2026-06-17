@@ -82,19 +82,6 @@ summary: No context menu on right-click; selecting lines and right-clicking offe
 Right-clicking a selection in the diff offers nothing. A context menu
 with at least a copy action is the motivating case.
 ---
-title: Top-level comments not attached to code
-added: 2026-06-14
-updated: 2026-06-17
-effort: medium
-tags: frontend, backend, model, comments
-summary: Review comments unattached to any line, for overall feedback, with the same status and reply behaviour as code comments
-
-The "Review overview" pane now exists and already renders an unattached
-comment (a root comment with line_number 0) under its file, with the
-same status/reply behaviour. Remaining: a way to create such a comment,
-and a decision on whether they are per-file or review-wide, plus the
-matching state-schema and `_readme` updates.
----
 title: Add a code-review CLI for agents instead of hand-editing JSON
 added: 2026-06-14
 updated: 2026-06-16

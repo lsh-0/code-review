@@ -242,6 +242,20 @@ func (a *App) GetCommentedFiles() (string, error) {
 	return string(data), nil
 }
 
+// return the review-level comments (overall feedback, not anchored to any
+// file) as JSON, for the overview to render alongside per-file feedback.
+func (a *App) GetReviewComments() (string, error) {
+	comments := a.review.Comments
+	if comments == nil {
+		comments = []*model.Comment{}
+	}
+	data, err := json.Marshal(comments)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 func (a *App) GetMarkedFiles() (string, error) {
 	marked := a.review.MarkedFiles
 	if marked == nil {
@@ -264,6 +278,20 @@ func (a *App) SetFileMarked(filePath string, marked bool) error {
 	return SaveReview(a.statePath, a.review)
 }
 
+// locate a comment by id. An empty `filePath` means a review-level comment
+// (overall feedback, no file anchor); otherwise the comment is sought in that
+// file's diff. Returns nil if the file or comment is absent.
+func (a *App) findComment(filePath string, commentID string) *model.Comment {
+	if filePath == "" {
+		return a.review.GetComment(commentID)
+	}
+	fileDiff := a.review.GetFileDiff(filePath)
+	if fileDiff == nil {
+		return nil
+	}
+	return fileDiff.GetComment(commentID)
+}
+
 func (a *App) AddComment(filePath string, content string, lineNumber int, contextBefore string, contextLine string, contextAfter string) error {
 	fileDiff := a.review.GetFileDiff(filePath)
 	if fileDiff == nil {
@@ -275,13 +303,15 @@ func (a *App) AddComment(filePath string, content string, lineNumber int, contex
 	return SaveReview(a.statePath, a.review)
 }
 
-func (a *App) UpdateComment(filePath string, commentID string, content string) error {
-	fileDiff := a.review.GetFileDiff(filePath)
-	if fileDiff == nil {
-		return fmt.Errorf("file not found: %s", filePath)
-	}
+// add a review-level comment: overall feedback not anchored to any file or
+// line, created from the overview.
+func (a *App) AddReviewComment(content string) error {
+	a.review.AddComment(content, a.userName)
+	return SaveReview(a.statePath, a.review)
+}
 
-	comment := fileDiff.GetComment(commentID)
+func (a *App) UpdateComment(filePath string, commentID string, content string) error {
+	comment := a.findComment(filePath, commentID)
 	if comment == nil {
 		return fmt.Errorf("comment not found: %s", commentID)
 	}
@@ -292,27 +322,21 @@ func (a *App) UpdateComment(filePath string, commentID string, content string) e
 }
 
 func (a *App) AddReply(filePath string, commentID string, content string) error {
-	fileDiff := a.review.GetFileDiff(filePath)
-	if fileDiff == nil {
-		return fmt.Errorf("file not found: %s", filePath)
-	}
-
-	if fileDiff.GetComment(commentID) == nil {
+	if a.findComment(filePath, commentID) == nil {
 		return fmt.Errorf("comment not found: %s", commentID)
 	}
 
-	fileDiff.AddReply(commentID, content, a.userName)
+	if filePath == "" {
+		a.review.AddReply(commentID, content, a.userName)
+	} else {
+		a.review.GetFileDiff(filePath).AddReply(commentID, content, a.userName)
+	}
 
 	return SaveReview(a.statePath, a.review)
 }
 
 func (a *App) ResolveComment(filePath string, commentID string) error {
-	fileDiff := a.review.GetFileDiff(filePath)
-	if fileDiff == nil {
-		return fmt.Errorf("file not found: %s", filePath)
-	}
-
-	comment := fileDiff.GetComment(commentID)
+	comment := a.findComment(filePath, commentID)
 	if comment == nil {
 		return fmt.Errorf("comment not found: %s", commentID)
 	}
@@ -323,12 +347,7 @@ func (a *App) ResolveComment(filePath string, commentID string) error {
 }
 
 func (a *App) IgnoreComment(filePath string, commentID string) error {
-	fileDiff := a.review.GetFileDiff(filePath)
-	if fileDiff == nil {
-		return fmt.Errorf("file not found: %s", filePath)
-	}
-
-	comment := fileDiff.GetComment(commentID)
+	comment := a.findComment(filePath, commentID)
 	if comment == nil {
 		return fmt.Errorf("comment not found: %s", commentID)
 	}
@@ -339,12 +358,7 @@ func (a *App) IgnoreComment(filePath string, commentID string) error {
 }
 
 func (a *App) ReactivateComment(filePath string, commentID string) error {
-	fileDiff := a.review.GetFileDiff(filePath)
-	if fileDiff == nil {
-		return fmt.Errorf("file not found: %s", filePath)
-	}
-
-	comment := fileDiff.GetComment(commentID)
+	comment := a.findComment(filePath, commentID)
 	if comment == nil {
 		return fmt.Errorf("comment not found: %s", commentID)
 	}
@@ -355,6 +369,11 @@ func (a *App) ReactivateComment(filePath string, commentID string) error {
 }
 
 func (a *App) DeleteComment(filePath string, commentID string) error {
+	if filePath == "" {
+		a.review.DeleteComment(commentID)
+		return SaveReview(a.statePath, a.review)
+	}
+
 	fileDiff := a.review.GetFileDiff(filePath)
 	if fileDiff == nil {
 		return fmt.Errorf("file not found: %s", filePath)

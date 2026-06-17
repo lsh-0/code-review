@@ -23,6 +23,7 @@ var (
 	markedFiles       map[string]bool
 	zoomLevel         = 1.0
 	overviewActive    bool
+	reviewCommentMode bool
 )
 
 const (
@@ -462,8 +463,8 @@ func selectOverview() {
 	removeBrowseLink()
 
 	refreshState(func() {
-		loadCommentedFiles(func(files []commentedFile) {
-			renderOverview(files)
+		loadCommentedFiles(func(reviewComments []*model.Comment, files []commentedFile) {
+			renderOverview(reviewComments, files)
 		})
 	})
 }
@@ -478,53 +479,60 @@ type commentedFile struct {
 // fetch every commented file and prime `commentsCache` for each, so the shared
 // comment-thread rendering (which reads the cache for replies) works in the
 // overview just as it does for a single file.
-func loadCommentedFiles(callback func([]commentedFile)) {
+func loadCommentedFiles(callback func(reviewComments []*model.Comment, files []commentedFile)) {
 	backend := win.Get("go")
 	if backend == js.Undefined {
-		callback(nil)
+		callback(nil, nil)
 		return
 	}
 	app := backend.Get("main").Get("App")
 	if app == js.Undefined {
-		callback(nil)
+		callback(nil, nil)
 		return
 	}
 
-	promise := app.Call("GetCommentedFiles")
-	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		if len(args) == 0 || args[0] == js.Undefined {
-			callback(nil)
-			return nil
-		}
-		var files []commentedFile
-		json.Unmarshal([]byte(args[0].String()), &files)
+	if commentsCache == nil {
+		commentsCache = make(map[string][]*model.Comment)
+	}
 
-		if commentsCache == nil {
-			commentsCache = make(map[string][]*model.Comment)
+	// fetch the per-file feedback, then the review-level comments, before
+	// rendering. Review comments are cached under the empty-path key so the
+	// shared comment handlers (which thread `filePath`) resolve their replies
+	// and route status changes to the review level.
+	filesPromise := app.Call("GetCommentedFiles")
+	filesPromise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		var files []commentedFile
+		if len(args) > 0 && args[0] != js.Undefined {
+			json.Unmarshal([]byte(args[0].String()), &files)
 		}
 		for _, f := range files {
 			commentsCache[f.Path] = f.Comments
 		}
 
-		callback(files)
+		reviewPromise := app.Call("GetReviewComments")
+		reviewPromise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			var reviewComments []*model.Comment
+			if len(args) > 0 && args[0] != js.Undefined {
+				json.Unmarshal([]byte(args[0].String()), &reviewComments)
+			}
+			commentsCache[""] = reviewComments
+
+			callback(reviewComments, files)
+			return nil
+		}))
 		return nil
 	}))
 }
 
-// render the overview into the diff pane: for each commented file a clickable
-// filename header followed by its comment threads (root comments only; replies
-// nest within each via the shared rendering). Clicking a header opens that file.
-func renderOverview(files []commentedFile) {
+// render the overview into the diff pane: a review-level "General feedback"
+// section (with an add control) followed by, for each commented file, a
+// clickable filename header and its comment threads. Root comments only; replies
+// nest within each via the shared rendering. Clicking a file header opens it.
+func renderOverview(reviewComments []*model.Comment, files []commentedFile) {
 	content := doc.Call("getElementById", "diff-content")
 	content.Set("innerHTML", "")
 
-	if len(files) == 0 {
-		empty := doc.Call("createElement", "div")
-		empty.Get("classList").Call("add", "overview-empty")
-		empty.Set("textContent", "No review feedback yet.")
-		content.Call("appendChild", empty)
-		return
-	}
+	content.Call("appendChild", overviewReviewSection(reviewComments))
 
 	for _, file := range files {
 		filePath := file.Path
@@ -543,16 +551,52 @@ func renderOverview(files []commentedFile) {
 
 		// thread the root comments only; replies are nested by the shared
 		// rendering, which reads them from `commentsCache` primed above.
-		roots := make([]*model.Comment, 0, len(file.Comments))
-		for _, comment := range file.Comments {
-			if comment.ParentID == "" {
-				roots = append(roots, comment)
-			}
-		}
-		section.Call("appendChild", createCommentThread(filePath, roots))
+		section.Call("appendChild", createCommentThread(filePath, rootComments(file.Comments)))
 
 		content.Call("appendChild", section)
 	}
+}
+
+// build the review-level feedback section: a heading, an "add comment" control,
+// and any existing review comments threaded with the shared rendering (which
+// routes their actions to the review level via the empty file path).
+func overviewReviewSection(reviewComments []*model.Comment) *js.Object {
+	section := doc.Call("createElement", "div")
+	section.Get("classList").Call("add", "overview-file")
+	section.Get("classList").Call("add", "overview-review")
+
+	heading := doc.Call("createElement", "div")
+	heading.Get("classList").Call("add", "overview-file-header")
+	heading.Set("textContent", "General review comments")
+	section.Call("appendChild", heading)
+
+	addBtn := doc.Call("createElement", "button")
+	addBtn.Get("classList").Call("add", "overview-add-comment")
+	addBtn.Set("textContent", "Add comment")
+	addBtn.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		showReviewCommentModal()
+		return nil
+	}))
+	section.Call("appendChild", addBtn)
+
+	if len(reviewComments) > 0 {
+		// review comments are keyed under the empty path; their action handlers
+		// pass "" as the file, routing status/reply/delete to the review level.
+		section.Call("appendChild", createCommentThread("", rootComments(reviewComments)))
+	}
+
+	return section
+}
+
+// select the root comments (no parent) from a flat comment list.
+func rootComments(comments []*model.Comment) []*model.Comment {
+	roots := make([]*model.Comment, 0, len(comments))
+	for _, comment := range comments {
+		if comment.ParentID == "" {
+			roots = append(roots, comment)
+		}
+	}
+	return roots
 }
 
 // render (or replace) a "browse" link in the file header that opens the
@@ -1209,8 +1253,21 @@ func createCommentElement(filePath string, comment *model.Comment) *js.Object {
 }
 
 func showCommentModal(filePath string, lineNumber int) {
+	reviewCommentMode = false
 	currentFile = filePath
 	currentLineNumber = lineNumber
+
+	modal := doc.Call("getElementById", "comment-modal")
+	input := doc.Call("getElementById", "comment-input")
+	input.Set("value", "")
+	modal.Get("classList").Call("add", "active")
+	input.Call("focus")
+}
+
+// open the add-comment modal for a review-level comment: overall feedback with
+// no file or line anchor, created from the overview.
+func showReviewCommentModal() {
+	reviewCommentMode = true
 
 	modal := doc.Call("getElementById", "comment-modal")
 	input := doc.Call("getElementById", "comment-input")
@@ -1267,6 +1324,20 @@ func refreshFileView(filePath string) {
 	})
 }
 
+// re-render after a comment action, choosing the right surface: the overview
+// when it is showing (including all review-level comment actions, which carry
+// an empty file path), otherwise the single-file view.
+func refreshAfterAction(filePath string) {
+	if overviewActive {
+		loadCommentedFiles(func(reviewComments []*model.Comment, files []commentedFile) {
+			renderOverview(reviewComments, files)
+			renderFileList()
+		})
+		return
+	}
+	refreshFileView(filePath)
+}
+
 func saveComment() {
 	input := doc.Call("getElementById", "comment-input")
 	content := input.Get("value").String()
@@ -1274,8 +1345,6 @@ func saveComment() {
 	if content == "" {
 		return
 	}
-
-	contextBefore, contextLine, contextAfter := getLineContext(currentFile, currentLineNumber)
 
 	backend := win.Get("go")
 	if backend == js.Undefined {
@@ -1287,10 +1356,26 @@ func saveComment() {
 		return
 	}
 
+	// a review-level comment has no file or line anchor; it is added through a
+	// distinct backend call and refreshes the overview rather than a file view.
+	if reviewCommentMode {
+		promise := app.Call("AddReviewComment", content)
+		promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			hideCommentModal()
+			loadCommentedFiles(func(reviewComments []*model.Comment, files []commentedFile) {
+				renderOverview(reviewComments, files)
+			})
+			return nil
+		}))
+		return
+	}
+
+	contextBefore, contextLine, contextAfter := getLineContext(currentFile, currentLineNumber)
+
 	promise := app.Call("AddComment", currentFile, content, currentLineNumber, contextBefore, contextLine, contextAfter)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		hideCommentModal()
-		refreshFileView(currentFile)
+		refreshAfterAction(currentFile)
 		return nil
 	}))
 }
@@ -1332,7 +1417,7 @@ func updateComment() {
 	promise := app.Call("UpdateComment", currentFile, currentCommentID, content)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		hideEditCommentModal()
-		refreshFileView(currentFile)
+		refreshAfterAction(currentFile)
 		return nil
 	}))
 }
@@ -1374,7 +1459,7 @@ func saveReply() {
 	promise := app.Call("AddReply", currentFile, currentReplyID, content)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
 		hideReplyModal()
-		refreshFileView(currentFile)
+		refreshAfterAction(currentFile)
 		return nil
 	}))
 }
@@ -1392,7 +1477,7 @@ func resolveComment(filePath string, commentID string) {
 
 	promise := app.Call("ResolveComment", filePath, commentID)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		refreshFileView(filePath)
+		refreshAfterAction(filePath)
 		return nil
 	}))
 }
@@ -1410,7 +1495,7 @@ func ignoreComment(filePath string, commentID string) {
 
 	promise := app.Call("IgnoreComment", filePath, commentID)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		refreshFileView(filePath)
+		refreshAfterAction(filePath)
 		return nil
 	}))
 }
@@ -1428,7 +1513,7 @@ func reactivateComment(filePath string, commentID string) {
 
 	promise := app.Call("ReactivateComment", filePath, commentID)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		refreshFileView(filePath)
+		refreshAfterAction(filePath)
 		return nil
 	}))
 }
@@ -1446,7 +1531,7 @@ func deleteComment(filePath string, commentID string) {
 
 	promise := app.Call("DeleteComment", filePath, commentID)
 	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		refreshFileView(filePath)
+		refreshAfterAction(filePath)
 		return nil
 	}))
 }
@@ -1492,8 +1577,8 @@ func setupEventHandlers() {
 			loadDiffFiles(func() {
 				renderFileList()
 				if overviewActive {
-					loadCommentedFiles(func(files []commentedFile) {
-						renderOverview(files)
+					loadCommentedFiles(func(reviewComments []*model.Comment, files []commentedFile) {
+						renderOverview(reviewComments, files)
 					})
 				} else if currentFile != "" {
 					renderDiff(currentFile)
