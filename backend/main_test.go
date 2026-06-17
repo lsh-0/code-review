@@ -204,3 +204,74 @@ func TestApp_UpdateComment(t *testing.T) {
 		t.Errorf("expected content %q, got %q", newContent, comment.Content)
 	}
 }
+
+func TestApp_GetCommentedFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	app := &App{
+		review:    model.NewReview("/tmp/repo", "feature", "main"),
+		repoPath:  "/tmp/repo",
+		dataDir:   tmpDir,
+		statePath: filepath.Join(tmpDir, "test.json"),
+		// the overview iterates diffFiles for ordering; loadDiff normally fills
+		// it from git, so set it directly for the test.
+		diffFiles: []DiffFile{
+			{Path: "a.go"},
+			{Path: "b.go"},
+			{Path: "c.go"},
+		},
+	}
+
+	// comments on a.go and c.go only; b.go stays comment-free and must be omitted.
+	if err := app.AddComment("c.go", "third", 3, "", "", ""); err != nil {
+		t.Fatalf("AddComment failed: %v", err)
+	}
+	if err := app.AddComment("a.go", "first", 1, "", "", ""); err != nil {
+		t.Fatalf("AddComment failed: %v", err)
+	}
+
+	data, err := app.GetCommentedFiles()
+	if err != nil {
+		t.Fatalf("GetCommentedFiles failed: %v", err)
+	}
+
+	var actual []struct {
+		Path     string           `json:"path"`
+		Comments []*model.Comment `json:"comments"`
+	}
+	if err := json.Unmarshal([]byte(data), &actual); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	// only the two commented files, in diff order (a before c), b.go omitted.
+	expectedPaths := []string{"a.go", "c.go"}
+	if len(actual) != len(expectedPaths) {
+		t.Fatalf("expected %d commented files, got %d", len(expectedPaths), len(actual))
+	}
+	for i, expected := range expectedPaths {
+		if actual[i].Path != expected {
+			t.Errorf("file %d: expected path %q, got %q", i, expected, actual[i].Path)
+		}
+		if len(actual[i].Comments) != 1 {
+			t.Errorf("file %q: expected 1 comment, got %d", actual[i].Path, len(actual[i].Comments))
+		}
+	}
+}
+
+func TestApp_GetCommentedFilesEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+	app := &App{
+		review:    model.NewReview("/tmp/repo", "feature", "main"),
+		repoPath:  "/tmp/repo",
+		dataDir:   tmpDir,
+		statePath: filepath.Join(tmpDir, "test.json"),
+		diffFiles: []DiffFile{{Path: "a.go"}},
+	}
+
+	data, err := app.GetCommentedFiles()
+	if err != nil {
+		t.Fatalf("GetCommentedFiles failed: %v", err)
+	}
+	if data != "[]" {
+		t.Errorf("expected empty array, got %q", data)
+	}
+}

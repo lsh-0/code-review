@@ -11,10 +11,9 @@ effort: high
 tags: frontend, ui
 summary: Ctrl-clicking file items selects multiple files and renders them as one stacked pane on the right, each section keeping its filename header
 
-Today selection is single-file: `currentFile` is a string,
-`selectFile` (`frontend/web.go:275`) clears every `.active` item and
-marks one, then `renderDiff(filePath)` (`frontend/web.go:335`) renders
-that one file into `#diff-content`. The filename shows once in
+Today selection is single-file: `currentFile` is a string, `selectFile`
+clears every `.active` item and marks one, then `renderDiff` renders that
+one file into `#diff-content`. The filename shows once in
 `#current-file-name`.
 
 Multi-select changes the shape: replace the single `currentFile` string
@@ -26,11 +25,11 @@ the per-file header moves from the single `#current-file-name` element
 into the stacked content so every section is labelled.
 
 Knock-on points: `selectFile`'s single-`.active` logic becomes
-multi-`.active`; comment loading (`loadComments`, `frontend/web.go:304`)
-and the `commentsCache` keyed by path must cover all selected files, not
-just one; and the diff click/scroll handlers that assume a single
-current file need auditing. Decide whether the selection set persists in
-review state or is view-only.
+multi-`.active`; comment loading (`loadComments`) and the `commentsCache`
+keyed by path must cover all selected files, not just one; and the diff
+click/scroll handlers that assume a single current file need auditing.
+Decide whether the selection set persists in review state or is
+view-only.
 ---
 title: Import review feedback from Bitbucket and GitHub
 added: 2026-06-12
@@ -83,31 +82,18 @@ summary: No context menu on right-click; selecting lines and right-clicking offe
 Right-clicking a selection in the diff offers nothing. A context menu
 with at least a copy action is the motivating case.
 ---
-title: Enlarge the add-comment box text
-added: 2026-06-13
-effort: low
-tags: frontend, ui, comments
-summary: Comment input text looks small and squished; a slightly larger size (~1.1–1.2x) may read better
----
-title: Overview of all files and hunks with review feedback
-added: 2026-06-13
-effort: high
-tags: frontend, ui, comments
-summary: A view at the end of the files list that gathers every file and hunk carrying feedback into one stacked pane
-
-Akin to the Ctrl-click compound-diff idea, but scoped to commented
-content. For long, involved reviews an at-a-glance summary of everything
-with feedback would help.
----
 title: Top-level comments not attached to code
 added: 2026-06-14
-effort: high
+updated: 2026-06-17
+effort: medium
 tags: frontend, backend, model, comments
 summary: Review comments unattached to any line, for overall feedback, with the same status and reply behaviour as code comments
 
-Surfaced on the overview page alongside code comments. Same
-resolve/ignore status and replies, just no line anchor. Needs state
-schema changes and an update to the `_readme` review instructions.
+The "Review overview" pane now exists and already renders an unattached
+comment (a root comment with line_number 0) under its file, with the
+same status/reply behaviour. Remaining: a way to create such a comment,
+and a decision on whether they are per-file or review-wide, plus the
+matching state-schema and `_readme` updates.
 ---
 title: Add a code-review CLI for agents instead of hand-editing JSON
 added: 2026-06-14
@@ -188,4 +174,14 @@ summary: The divider between the file list and the diff cannot be dragged; click
 
 The boundary between the file-list column and the diff pane is fixed.
 Dragging it should adjust how the horizontal space is split between them.
+---
+title: Hide files matching ignore patterns, with a show-hidden toggle
+added: 2026-06-16
+effort: medium
+tags: frontend, backend
+summary: Keep a list of file patterns to always hide from the review (e.g. compiled .qtpl.go), with a way to reveal which files were hidden
+
+Generated or compiled files (like .qtpl.go from .qtpl) are noise the
+reviewer never cares about. A configurable ignore list would hide them;
+a "show hidden" control would reveal which files were suppressed.
 ---

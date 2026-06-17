@@ -216,6 +216,32 @@ func (a *App) GetComments(filePath string) (string, error) {
 	return string(data), nil
 }
 
+// return the files that carry at least one comment, in diff order, each with
+// its full comment array. This is the data for the review overview: a single
+// call gathering every file's feedback rather than one request per file. Files
+// with no comments are omitted.
+func (a *App) GetCommentedFiles() (string, error) {
+	type commentedFile struct {
+		Path     string           `json:"path"`
+		Comments []*model.Comment `json:"comments"`
+	}
+
+	result := make([]commentedFile, 0)
+	for _, diffFile := range a.diffFiles {
+		fileDiff := a.review.GetFileDiff(diffFile.Path)
+		if fileDiff == nil || len(fileDiff.Comments) == 0 {
+			continue
+		}
+		result = append(result, commentedFile{Path: diffFile.Path, Comments: fileDiff.Comments})
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 func (a *App) GetMarkedFiles() (string, error) {
 	marked := a.review.MarkedFiles
 	if marked == nil {

@@ -22,6 +22,7 @@ var (
 	commentsCache     map[string][]*model.Comment
 	markedFiles       map[string]bool
 	zoomLevel         = 1.0
+	overviewActive    bool
 )
 
 const (
@@ -346,9 +347,35 @@ func renderFileList() {
 		container.Call("appendChild", fileItem)
 	}
 
-	if currentFile == "" && len(diffFiles) > 0 {
+	appendOverviewEntry(container)
+
+	if currentFile == "" && !overviewActive && len(diffFiles) > 0 {
 		selectFile(diffFiles[0].Path)
 	}
+}
+
+// append the review-overview entry to the end of the file list. It gathers
+// every file's feedback into one pane; it carries no marked checkbox and is
+// highlighted while the overview is shown.
+func appendOverviewEntry(container *js.Object) {
+	entry := doc.Call("createElement", "div")
+	entry.Get("classList").Call("add", "file-item")
+	entry.Get("classList").Call("add", "overview-item")
+	if overviewActive {
+		entry.Get("classList").Call("add", "active")
+	}
+
+	label := doc.Call("createElement", "div")
+	label.Get("classList").Call("add", "file-name")
+	label.Set("textContent", "Review overview")
+	entry.Call("appendChild", label)
+
+	entry.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		selectOverview()
+		return nil
+	}))
+
+	container.Call("appendChild", entry)
 }
 
 func refreshState(callback func()) {
@@ -377,10 +404,11 @@ func selectFile(filePath string) {
 	// page load when the viewer has not moved. The double-click-to-mark flow
 	// relies on this — its leading single clicks land here and must not disturb
 	// the view. The dblclick handler toggles the checkbox independently.
-	if filePath == currentFile {
+	if filePath == currentFile && !overviewActive {
 		return
 	}
 
+	overviewActive = false
 	currentFile = filePath
 
 	diffView := doc.Call("getElementById", "diff-view")
@@ -410,16 +438,130 @@ func selectFile(filePath string) {
 	})
 }
 
+// show the review overview: every file's feedback gathered into the diff pane,
+// reached from the entry at the end of the file list. State is refreshed first
+// so the overview reflects any comments an agent left since the last view.
+func selectOverview() {
+	overviewActive = true
+	currentFile = ""
+
+	diffView := doc.Call("getElementById", "diff-view")
+	diffView.Set("scrollTop", 0)
+
+	allItems := doc.Call("querySelectorAll", ".file-item")
+	for i := 0; i < allItems.Length(); i++ {
+		item := allItems.Index(i)
+		if item.Get("classList").Call("contains", "overview-item").Bool() {
+			item.Get("classList").Call("add", "active")
+		} else {
+			item.Get("classList").Call("remove", "active")
+		}
+	}
+
+	doc.Call("getElementById", "current-file-name").Set("textContent", "Review overview")
+	removeBrowseLink()
+
+	refreshState(func() {
+		loadCommentedFiles(func(files []commentedFile) {
+			renderOverview(files)
+		})
+	})
+}
+
+// a file path paired with its comments, as returned by the backend's
+// `GetCommentedFiles`.
+type commentedFile struct {
+	Path     string           `json:"path"`
+	Comments []*model.Comment `json:"comments"`
+}
+
+// fetch every commented file and prime `commentsCache` for each, so the shared
+// comment-thread rendering (which reads the cache for replies) works in the
+// overview just as it does for a single file.
+func loadCommentedFiles(callback func([]commentedFile)) {
+	backend := win.Get("go")
+	if backend == js.Undefined {
+		callback(nil)
+		return
+	}
+	app := backend.Get("main").Get("App")
+	if app == js.Undefined {
+		callback(nil)
+		return
+	}
+
+	promise := app.Call("GetCommentedFiles")
+	promise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		if len(args) == 0 || args[0] == js.Undefined {
+			callback(nil)
+			return nil
+		}
+		var files []commentedFile
+		json.Unmarshal([]byte(args[0].String()), &files)
+
+		if commentsCache == nil {
+			commentsCache = make(map[string][]*model.Comment)
+		}
+		for _, f := range files {
+			commentsCache[f.Path] = f.Comments
+		}
+
+		callback(files)
+		return nil
+	}))
+}
+
+// render the overview into the diff pane: for each commented file a clickable
+// filename header followed by its comment threads (root comments only; replies
+// nest within each via the shared rendering). Clicking a header opens that file.
+func renderOverview(files []commentedFile) {
+	content := doc.Call("getElementById", "diff-content")
+	content.Set("innerHTML", "")
+
+	if len(files) == 0 {
+		empty := doc.Call("createElement", "div")
+		empty.Get("classList").Call("add", "overview-empty")
+		empty.Set("textContent", "No review feedback yet.")
+		content.Call("appendChild", empty)
+		return
+	}
+
+	for _, file := range files {
+		filePath := file.Path
+
+		section := doc.Call("createElement", "div")
+		section.Get("classList").Call("add", "overview-file")
+
+		heading := doc.Call("createElement", "div")
+		heading.Get("classList").Call("add", "overview-file-header")
+		heading.Set("textContent", filePath)
+		heading.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			selectFile(filePath)
+			return nil
+		}))
+		section.Call("appendChild", heading)
+
+		// thread the root comments only; replies are nested by the shared
+		// rendering, which reads them from `commentsCache` primed above.
+		roots := make([]*model.Comment, 0, len(file.Comments))
+		for _, comment := range file.Comments {
+			if comment.ParentID == "" {
+				roots = append(roots, comment)
+			}
+		}
+		section.Call("appendChild", createCommentThread(filePath, roots))
+
+		content.Call("appendChild", section)
+	}
+}
+
 // render (or replace) a "browse" link in the file header that opens the
 // selected file in the OS-preferred application. A single `#browse-link`
 // element is reused across selections.
 func renderBrowseLink(filePath string) {
 	header := doc.Call("getElementById", "current-file-header")
 
-	existing := doc.Call("getElementById", "browse-link")
-	if existing != js.Undefined && existing != nil {
-		existing.Call("remove")
-	}
+	removeBrowseLink()
 
 	link := doc.Call("createElement", "button")
 	link.Call("setAttribute", "id", "browse-link")
@@ -431,6 +573,15 @@ func renderBrowseLink(filePath string) {
 		return nil
 	}))
 	header.Call("appendChild", link)
+}
+
+// remove the "browse" link from the file header if present. The overview has no
+// single file to browse, so it clears the link.
+func removeBrowseLink() {
+	existing := doc.Call("getElementById", "browse-link")
+	if existing != js.Undefined && existing != nil {
+		existing.Call("remove")
+	}
 }
 
 // open a file in the preferred application via the backend, reporting a
@@ -1340,7 +1491,11 @@ func setupEventHandlers() {
 		refreshState(func() {
 			loadDiffFiles(func() {
 				renderFileList()
-				if currentFile != "" {
+				if overviewActive {
+					loadCommentedFiles(func(files []commentedFile) {
+						renderOverview(files)
+					})
+				} else if currentFile != "" {
 					renderDiff(currentFile)
 				}
 			})

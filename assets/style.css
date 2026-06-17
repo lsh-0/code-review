@@ -265,6 +265,48 @@ header {
     font-size: 0.75rem;
 }
 
+/* the review-overview entry sits at the end of the file list, separated from
+   the files above it and without a marked checkbox. */
+.file-item.overview-item {
+    margin-top: 1rem;
+    border-style: dashed;
+    justify-content: center;
+}
+
+.file-item.overview-item .file-name {
+    font-family: inherit;
+    font-weight: 600;
+}
+
+/* a file's section in the overview pane: a clickable header that opens the
+   file, followed by its comment threads. */
+.overview-file {
+    margin-bottom: 2rem;
+}
+
+.overview-file-header {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 0.5rem 0;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-accent);
+    cursor: pointer;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+
+.overview-file-header:hover {
+    text-decoration: underline;
+}
+
+.overview-empty {
+    padding: 2rem;
+    text-align: center;
+    color: var(--color-hunk-text);
+}
+
 #diff-view {
     flex: 1;
     overflow-y: auto;
