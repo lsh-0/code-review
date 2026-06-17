@@ -5,12 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-06-17
 
 ### Added
 
-- A "Review overview" pane, reached from the end of the file list, that stacks every commented file and its feedback into
-  one view so a long review can be taken in at a glance; clicking a file's heading opens it.
+- A "Review overview" pane, reached from a button pinned to the bottom of the file list, that stacks every commented file
+  and its feedback into one view so a long review can be taken in at a glance; clicking a file's heading opens it.
 - Review-level comments for overall feedback, created from the overview and not anchored to any file or line. They behave
   like code comments — status, replies, edit and delete — and are stored in a top-level `comments` array in the state file.
 
