@@ -184,12 +184,13 @@ header {
     width: 300px;
     background: var(--color-nav-bg);
     border-right: 1px solid var(--color-border-light);
-    overflow-y: auto;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
 }
 
 #file-list h2 {
+    flex: 0 0 auto;
     font-size: 1rem;
     font-weight: 600;
     padding: 1rem;
@@ -197,6 +198,10 @@ header {
     color: var(--color-text-secondary);
     background: var(--color-nav-bg);
     border-bottom: 1px solid var(--color-border);
+}
+
+#file-list > header {
+    flex: 0 0 auto;
 }
 
 #files {
@@ -265,10 +270,18 @@ header {
     font-size: 0.75rem;
 }
 
-/* the review-overview entry sits at the end of the file list, separated from
-   the files above it and without a marked checkbox. */
+/* the overview entry lives in a footer fixed to the bottom of the file list,
+   so it stays in place while the file list above it scrolls. */
+#overview-footer {
+    flex: 0 0 auto;
+    padding: 1rem;
+    background: var(--color-nav-bg);
+    border-top: 1px solid var(--color-border);
+}
+
+/* the review-overview entry sits in the footer, without a marked checkbox. */
 .file-item.overview-item {
-    margin-top: 1rem;
+    margin-bottom: 0;
     border-style: dashed;
     justify-content: center;
 }

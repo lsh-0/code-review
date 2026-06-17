@@ -172,3 +172,17 @@ Generated or compiled files (like .qtpl.go from .qtpl) are noise the
 reviewer never cares about. A configurable ignore list would hide them;
 a "show hidden" control would reveal which files were suppressed.
 ---
+title: Warn about uncommitted working-tree changes with banners
+added: 2026-06-17
+effort: medium
+tags: frontend, backend, ui
+summary: A full-width info banner counting modified/deleted tracked files, plus a per-file warning banner (with a link to open the file in the reviewer's diff tool) when the viewed file has local changes not reflected in the diff
+
+Tracked files that changed or were deleted should trigger a friendly
+green page-wide banner ("uncommitted changes detected: N modified, N
+deleted"); new untracked files are ignored. Viewing a file with local
+changes also shows an orange per-file banner ("file contains uncommitted
+changes") with an inline link to open it in the reviewer's configured
+diff tool — via `git difftool` (honours their `diff.tool`, e.g. meld),
+since `xdg-open` opens a single file and cannot diff.
+---

@@ -348,17 +348,21 @@ func renderFileList() {
 		container.Call("appendChild", fileItem)
 	}
 
-	appendOverviewEntry(container)
+	renderOverviewEntry()
 
 	if currentFile == "" && !overviewActive && len(diffFiles) > 0 {
 		selectFile(diffFiles[0].Path)
 	}
 }
 
-// append the review-overview entry to the end of the file list. It gathers
-// every file's feedback into one pane; it carries no marked checkbox and is
-// highlighted while the overview is shown.
-func appendOverviewEntry(container *js.Object) {
+// render the review-overview entry into its footer, fixed at the bottom of the
+// file list so it stays in place while the file list scrolls. It gathers every
+// file's feedback into one pane, carries no marked checkbox, and is highlighted
+// while the overview is shown.
+func renderOverviewEntry() {
+	footer := doc.Call("getElementById", "overview-footer")
+	footer.Set("innerHTML", "")
+
 	entry := doc.Call("createElement", "div")
 	entry.Get("classList").Call("add", "file-item")
 	entry.Get("classList").Call("add", "overview-item")
@@ -376,7 +380,7 @@ func appendOverviewEntry(container *js.Object) {
 		return nil
 	}))
 
-	container.Call("appendChild", entry)
+	footer.Call("appendChild", entry)
 }
 
 func refreshState(callback func()) {
