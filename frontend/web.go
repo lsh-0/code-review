@@ -181,6 +181,12 @@ func loadAllComments(callback func()) {
 // then invoke `callback`. Used both for the initial load and on refresh, so the
 // file list reflects newly committed files.
 func loadDiffFiles(callback func()) {
+	// reset before the metadata load. `GetDiffFiles` returns no `Hunks`, and
+	// unmarshalling into a populated slice leaves each element's existing hunks
+	// untouched (absent JSON keys do not clear struct fields). On a refresh that
+	// would keep the pre-refresh hunks, so a recomputed diff never reaches the
+	// view. Clearing first forces every entry to re-fetch its hunks lazily.
+	diffFiles = nil
 	callBackend("GetDiffFiles", &diffFiles, func() {
 		loadAllComments(func() {
 			loadMarkedFiles(callback)
@@ -662,6 +668,14 @@ func diffFileIndex(filePath string) int {
 // selection; once fetched they are stored back into the entry and reused. Binary
 // files have no hunks and are left as-is. A missing entry or fetch error still
 // calls back, so the caller renders (the empty/binary path) rather than hanging.
+// whether a diff entry still needs its hunks fetched. A text file with no hunks
+// has not been loaded yet (or was reset by a refresh, which clears hunks so a
+// recomputed diff is re-fetched rather than served stale); a binary file never
+// has hunks and is never fetched.
+func diffFileNeedsFetch(file DiffFile) bool {
+	return len(file.Hunks) == 0 && !file.Binary
+}
+
 func ensureFileDiff(filePath string, callback func()) {
 	idx := diffFileIndex(filePath)
 	if idx == -1 {
@@ -669,7 +683,7 @@ func ensureFileDiff(filePath string, callback func()) {
 		return
 	}
 	// already loaded (has hunks) or binary (never has hunks): nothing to fetch.
-	if len(diffFiles[idx].Hunks) > 0 || diffFiles[idx].Binary {
+	if !diffFileNeedsFetch(diffFiles[idx]) {
 		callback()
 		return
 	}

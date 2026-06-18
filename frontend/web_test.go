@@ -5,6 +5,7 @@ package main
 
 import (
 	"code-review/model"
+	"encoding/json"
 	"testing"
 )
 
@@ -198,6 +199,63 @@ func TestGetFileCommentStatusNotInCache(t *testing.T) {
 	result := getFileCommentStatus("nonexistent.go")
 	if result != "none" {
 		t.Errorf("getFileCommentStatus() = %v, want none", result)
+	}
+}
+
+func TestDiffFileNeedsFetch(t *testing.T) {
+	tests := []struct {
+		name     string
+		given    DiffFile
+		expected bool
+	}{
+		{
+			name:     "text file without hunks needs fetch",
+			given:    DiffFile{Path: "a.go"},
+			expected: true,
+		},
+		{
+			name:     "text file with hunks does not",
+			given:    DiffFile{Path: "a.go", Hunks: []DiffHunk{{}}},
+			expected: false,
+		},
+		{
+			name:     "binary file never needs fetch",
+			given:    DiffFile{Path: "img.png", Binary: true},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := diffFileNeedsFetch(tt.given)
+			if actual != tt.expected {
+				t.Errorf("diffFileNeedsFetch(%+v) = %v, want %v", tt.given, actual, tt.expected)
+			}
+		})
+	}
+}
+
+// a refresh re-loads file metadata (no hunks) over the in-memory diff. Decoding
+// that metadata must clear any previously loaded hunks, otherwise a recomputed
+// diff is hidden behind the stale ones. This mirrors `loadDiffFiles` resetting
+// `diffFiles` to nil before the metadata decode.
+func TestRefreshClearsStaleHunks(t *testing.T) {
+	diffFiles = []DiffFile{
+		{Path: "a.go", Hunks: []DiffHunk{{NewStart: 1, Lines: []DiffLine{{Content: "old"}}}}},
+	}
+
+	// the reset that `loadDiffFiles` performs before decoding metadata-only JSON.
+	diffFiles = nil
+	given := `[{"Path":"a.go","Binary":false}]`
+	if err := json.Unmarshal([]byte(given), &diffFiles); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(diffFiles) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(diffFiles))
+	}
+	if !diffFileNeedsFetch(diffFiles[0]) {
+		t.Errorf("stale hunks survived the metadata reload: %+v", diffFiles[0])
 	}
 }
 

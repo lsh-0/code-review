@@ -166,3 +166,14 @@ Distribution is local-build only today. The Wails cross-platform guide
 turning a pushed tag into a release with the binaries attached is the
 companion piece. Relates to the AppImage item, which covers Linux.
 ---
+title: Detect new commits on the source branch and offer a refresh banner
+added: 2026-06-18
+effort: medium
+tags: backend, frontend, ui
+summary: Watch the source-branch HEAD for new commits and show the refresh banner, as the state-file watcher already does for external review edits
+
+The existing watcher polls only the review-state JSON, so an agent's
+comment edits raise the banner but a new commit does not — the reviewer
+sees no prompt that the diff is now stale. A separate poll of the
+source-branch HEAD would close that gap and reuse the same banner.
+---

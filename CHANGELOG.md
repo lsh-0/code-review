@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-06-18
+
+### Fixed
+
+- Refreshing now shows newly committed changes to a file that was already open. Previously the refresh kept the diff as it
+  was when the file was first viewed, so a commit made while reviewing did not appear until the file was reopened.
+
 ## [0.7.0] - 2026-06-18
 
 ### Added
