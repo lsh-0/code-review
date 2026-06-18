@@ -367,20 +367,51 @@ header {
     margin-bottom: 2rem;
 }
 
+/* the overview's per-file header, matching the file page's `#current-file-header`:
+   a warm bar carrying the filename link and the browse button. */
 .overview-file-header {
+    padding: 0.5rem 1rem;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    /* the header sits directly on top of the file's hunk(s), so it rounds only
+       its top corners and shares the seam with the hunk below — one card, no gap. */
+    border-radius: 4px 4px 0 0;
+    border-bottom: none;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* in the overview the hunk butts directly under the file header: drop its own
+   top rounding and the inter-hunk margin so header and hunk read as one card. */
+.overview-file .diff-hunk {
+    margin-bottom: 0;
+    border-radius: 0;
+}
+
+/* the overview file section is the card; its last hunk rounds its bottom. */
+.overview-file .diff-hunk:last-child {
+    border-radius: 0 0 4px 4px;
+}
+
+/* the filename in the overview header, mirroring `#current-file-name`. As a file
+   link it is a borderless button so it reads as text but acts as a control; the
+   review section reuses it as a plain label (a span, no click). */
+.overview-file-name {
     font-family: var(--font-mono);
     font-weight: 600;
     font-size: 0.95rem;
-    padding: 0.5rem 0;
-    margin-bottom: 0.5rem;
-    border-bottom: 1px solid var(--color-border);
     color: var(--color-accent);
+    background: transparent;
+    border: none;
+    padding: 0;
+    text-align: left;
     cursor: pointer;
     word-break: break-all;
     overflow-wrap: anywhere;
 }
 
-.overview-file-header:hover {
+button.overview-file-name:hover {
     text-decoration: underline;
 }
 
@@ -391,13 +422,9 @@ header {
 }
 
 /* the review-level feedback section heads the overview and is not a file, so
-   its header is not clickable. */
-.overview-review .overview-file-header {
-    cursor: default;
-}
-
-.overview-review .overview-file-header:hover {
-    text-decoration: none;
+   its label is plain text, not an accent-coloured link. */
+.overview-review .overview-file-name {
+    color: var(--color-text);
 }
 
 .overview-add-comment {
@@ -415,6 +442,7 @@ header {
 .overview-add-comment:hover {
     background: var(--color-bg-subtle);
 }
+
 
 #diff-view {
     flex: 1;
@@ -662,8 +690,21 @@ header {
 .comment-thread {
     background: var(--color-bg-subtle);
     border-left: 3px solid var(--color-status-resolved);
-    margin: 0.5rem 0;
-    padding: 0.75rem 1rem;
+    /* no vertical margin: the thread butts against the commented line above and
+       the next diff line below, so a comment and its code read as one block. The
+       0.75rem inset is the single indent step shared by the comment card and the
+       reply rail, so the hunk edge, comment edge and reply edge align. */
+    margin: 0;
+    padding: 0.75rem;
+}
+
+/* the diff line a comment is attached to carries the same left bar as its
+   thread, so the two join into a single bordered block down the left edge. The
+   bar reuses the `::before` marker (which sits above the line's own background)
+   shown always and in the comment colour rather than only on hover. */
+.diff-line.commented::before {
+    opacity: 1;
+    background: var(--color-status-resolved);
 }
 
 .comment {
@@ -720,8 +761,12 @@ header {
     white-space: pre-wrap;
 }
 
+/* replies sit under the root body behind a thin left rail. The rail's left edge
+   aligns with the root comment's content edge — the same edge the Reply button
+   below starts from — so the rail visually continues down to that button. The
+   bottom margin gives the last reply breathing room before the action row. */
 .comment-replies {
-    margin: 0.5rem 0 0.5rem 1rem;
+    margin: 0.5rem 0 0.75rem;
     border-left: 2px solid var(--color-border);
     padding-left: 0.75rem;
 }
@@ -735,10 +780,6 @@ header {
     border-radius: 0;
     padding: 0.4rem 0;
     margin-bottom: 0;
-}
-
-.comment-reply + .comment-reply {
-    border-top: 1px solid var(--color-border);
 }
 
 .comment-reply .comment-content {

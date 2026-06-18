@@ -455,6 +455,55 @@ func loadCommentedFiles(callback func(reviewComments []*model.Comment, files []c
 // clickable filename header and its comment threads. Root comments only; replies
 // nest within each via the shared rendering. Clicking a file header opens it.
 func renderOverview(reviewComments []*model.Comment, files []commentedFile) {
+	// fetch every commented file's hunks first, so the overview can render the
+	// real diff with comments embedded — the same view as the file pages, minus
+	// the expand controls. The fetches run independently; render once all settle.
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		paths = append(paths, file.Path)
+	}
+
+	ensureFileDiffs(paths, func() {
+		renderOverviewContent(reviewComments, files)
+	})
+}
+
+// render the overview's content once every commented file's hunks are loaded: a
+// review-level section, then for each file a clickable heading and that file's
+// hunks with comment threads embedded at their lines.
+// build an overview file section's header, matching the file page's header: the
+// filename in mono on a warm background, linking to that file's page, followed
+// by a "browse" button that opens it in the OS-preferred application. Unlike the
+// single file page's `#current-file-header`, this carries no id, since the
+// overview stacks one per commented file.
+func overviewFileHeader(filePath string) *js.Object {
+	header := doc.Call("createElement", "div")
+	header.Get("classList").Call("add", "overview-file-header")
+
+	name := doc.Call("createElement", "button")
+	name.Get("classList").Call("add", "overview-file-name")
+	name.Set("textContent", filePath)
+	name.Call("setAttribute", "title", "Open this file's page")
+	name.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		selectFile(filePath)
+		return nil
+	}))
+	header.Call("appendChild", name)
+
+	browse := doc.Call("createElement", "button")
+	browse.Get("classList").Call("add", "browse-link")
+	browse.Set("textContent", "browse")
+	browse.Call("setAttribute", "title", "Open this file in the preferred application")
+	browse.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		browseFile(filePath)
+		return nil
+	}))
+	header.Call("appendChild", browse)
+
+	return header
+}
+
+func renderOverviewContent(reviewComments []*model.Comment, files []commentedFile) {
 	content := doc.Call("getElementById", "diff-content")
 	content.Set("innerHTML", "")
 
@@ -466,20 +515,32 @@ func renderOverview(reviewComments []*model.Comment, files []commentedFile) {
 		section := doc.Call("createElement", "div")
 		section.Get("classList").Call("add", "overview-file")
 
-		heading := doc.Call("createElement", "div")
-		heading.Get("classList").Call("add", "overview-file-header")
-		heading.Set("textContent", filePath)
-		heading.Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-			selectFile(filePath)
-			return nil
-		}))
-		section.Call("appendChild", heading)
+		section.Call("appendChild", overviewFileHeader(filePath))
 
-		// thread the root comments only; replies are nested by the shared
-		// rendering, which reads them from `commentsCache` primed above.
-		section.Call("appendChild", createCommentThread(filePath, rootComments(file.Comments)))
+		// render only this file's commented hunks, with comments embedded, the
+		// same as the file page but read-only and without uncommented hunks.
+		renderFileHunks(section, filePath, true)
 
 		content.Call("appendChild", section)
+	}
+}
+
+// ensure the hunks of every path in `paths` are loaded, then invoke `callback`
+// once. Fetches are independent and may resolve in any order; a shared counter
+// fires the callback when the last completes. An empty list calls back at once.
+func ensureFileDiffs(paths []string, callback func()) {
+	remaining := len(paths)
+	if remaining == 0 {
+		callback()
+		return
+	}
+	for _, path := range paths {
+		ensureFileDiff(path, func() {
+			remaining--
+			if remaining == 0 {
+				callback()
+			}
+		})
 	}
 }
 
@@ -493,7 +554,10 @@ func overviewReviewSection(reviewComments []*model.Comment) *js.Object {
 
 	heading := doc.Call("createElement", "div")
 	heading.Get("classList").Call("add", "overview-file-header")
-	heading.Set("textContent", "General review comments")
+	label := doc.Call("createElement", "span")
+	label.Get("classList").Call("add", "overview-file-name")
+	label.Set("textContent", "General review comments")
+	heading.Call("appendChild", label)
 	section.Call("appendChild", heading)
 
 	addBtn := doc.Call("createElement", "button")
@@ -621,14 +685,79 @@ func ensureFileDiff(filePath string, callback func()) {
 }
 
 func renderDiff(filePath string) {
+	content := doc.Call("getElementById", "diff-content")
+	content.Set("innerHTML", "")
+	renderFileHunks(content, filePath, false)
+}
+
+// report whether any new-side line in `hunk` carries a comment for `filePath`,
+// so the overview can render only the hunks that have feedback.
+func hunkHasComments(filePath string, hunk DiffHunk) bool {
+	for _, line := range hunk.Lines {
+		if line.NewLineNo > 0 && len(getCommentsForLine(filePath, line.NewLineNo)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// the number of context lines shown around a comment in the overview, so a
+// comment on a large hunk shows a tight window rather than the whole hunk. The
+// comment renders below its anchored line, so the anchored line is itself one of
+// the lines above the comment: showing `overviewContextLines` below it and one
+// fewer above it puts an equal `overviewContextLines` of code on each side of
+// the comment block.
+const overviewContextLines = 3
+
+// append a commented hunk's lines to `parent`, but only those within the context
+// window of a commented line, with each comment thread embedded after its line.
+// Lines outside every window are dropped, so a comment in the middle of a large
+// new file shows just its neighbourhood. The full hunk remains available on the
+// file page.
+func appendCommentedHunkLines(parent *js.Object, filePath string, hunk DiffHunk) {
+	// mark each commented line's window visible: one fewer line above (the
+	// commented line counts toward the lines above the comment) than below.
+	visible := make([]bool, len(hunk.Lines))
+	for i, line := range hunk.Lines {
+		if line.NewLineNo <= 0 || len(getCommentsForLine(filePath, line.NewLineNo)) == 0 {
+			continue
+		}
+		lo := i - (overviewContextLines - 1)
+		if lo < 0 {
+			lo = 0
+		}
+		hi := i + overviewContextLines
+		if hi > len(hunk.Lines)-1 {
+			hi = len(hunk.Lines) - 1
+		}
+		for j := lo; j <= hi; j++ {
+			visible[j] = true
+		}
+	}
+
+	for i, line := range hunk.Lines {
+		if !visible[i] {
+			continue
+		}
+		lineElem := createDiffLine(line, filePath)
+		parent.Call("appendChild", lineElem)
+		appendCommentThread(parent, lineElem, filePath, line.NewLineNo)
+	}
+}
+
+// render a file's hunks (header, diff lines, and comment threads embedded at
+// their anchored lines) into `parent`. The single-file view (`overviewOnly`
+// false) renders every hunk with inter-hunk and end-of-file expand affordances.
+// The overview (`overviewOnly` true) instead renders read-only and only the
+// hunks that carry a comment, so a file contributes just its commented hunks
+// rather than its whole diff. Binary files render a placeholder; a missing entry
+// renders nothing.
+func renderFileHunks(parent *js.Object, filePath string, overviewOnly bool) {
 	idx := diffFileIndex(filePath)
 	if idx == -1 {
 		return
 	}
 	file := &diffFiles[idx]
-
-	content := doc.Call("getElementById", "diff-content")
-	content.Set("innerHTML", "")
 
 	// binary files carry no hunks and must never have their blob fetched or
 	// rendered: show a plain placeholder and stop before any hunk or
@@ -637,13 +766,19 @@ func renderDiff(filePath string) {
 		placeholder := doc.Call("createElement", "div")
 		placeholder.Get("classList").Call("add", "binary-placeholder")
 		placeholder.Set("textContent", "binary file")
-		content.Call("appendChild", placeholder)
+		parent.Call("appendChild", placeholder)
 		return
 	}
 
 	var prevHunkElem *js.Object
 	for i := range file.Hunks {
 		hunk := file.Hunks[i]
+
+		// in the overview, skip hunks with no comments: the page gathers feedback,
+		// not the whole diff, so a file shows only the hunks it has comments on.
+		if overviewOnly && !hunkHasComments(filePath, hunk) {
+			continue
+		}
 
 		hunkElem := doc.Call("createElement", "div")
 		hunkElem.Get("classList").Call("add", "diff-hunk")
@@ -653,39 +788,45 @@ func renderDiff(filePath string) {
 		headerText := fmt.Sprintf("@@ -%d,%d +%d,%d @@", hunk.OldStart, hunk.OldLines, hunk.NewStart, hunk.NewLines)
 		header.Set("textContent", headerText)
 
-		// the gap above this hunk: between the previous hunk's last new line
-		// (or the start of the file) and this hunk's first new line. The
-		// upward affordance sits above the header so revealed gap lines land
-		// in file order between the affordance and the header; it shows
-		// disabled when there is nothing hidden above the hunk.
-		prevEnd := 0
-		if i > 0 {
-			prev := file.Hunks[i-1]
-			prevEnd = prev.NewStart + prev.NewLines - 1
-		}
-		betweenHunks := i > 0
-		upState := addExpandAffordance(hunkElem, filePath, expandUp, hunk, hunk.NewStart-1, prevEnd+1, false)
+		if !overviewOnly {
+			// the gap above this hunk: between the previous hunk's last new line
+			// (or the start of the file) and this hunk's first new line. The
+			// upward affordance sits above the header so revealed gap lines land
+			// in file order between the affordance and the header; it shows
+			// disabled when there is nothing hidden above the hunk.
+			prevEnd := 0
+			if i > 0 {
+				prev := file.Hunks[i-1]
+				prevEnd = prev.NewStart + prev.NewLines - 1
+			}
+			betweenHunks := i > 0
+			upState := addExpandAffordance(hunkElem, filePath, expandUp, hunk, hunk.NewStart-1, prevEnd+1, false)
 
-		// a between-hunk gap also gets a downward affordance on the previous
-		// hunk, so it can be revealed from above as well as below. The two
-		// controls are linked as siblings: each one's boundary is the other's
-		// live frontier, so they converge on the gap and meet in the middle.
-		// The upward control carries the lower hunk and header for the merge.
-		if betweenHunks && prevHunkElem != nil {
-			prevHunk := file.Hunks[i-1]
-			downState := addExpandAffordance(prevHunkElem, filePath, expandDown, prevHunk, prevEnd+1, hunk.NewStart-1, false)
-			upState.sibling = downState
-			downState.sibling = upState
-			upState.lowerHunk = hunkElem
-			upState.lowerHeader = header
+			// a between-hunk gap also gets a downward affordance on the previous
+			// hunk, so it can be revealed from above as well as below. The two
+			// controls are linked as siblings: each one's boundary is the other's
+			// live frontier, so they converge on the gap and meet in the middle.
+			// The upward control carries the lower hunk and header for the merge.
+			if betweenHunks && prevHunkElem != nil {
+				prevHunk := file.Hunks[i-1]
+				downState := addExpandAffordance(prevHunkElem, filePath, expandDown, prevHunk, prevEnd+1, hunk.NewStart-1, false)
+				upState.sibling = downState
+				downState.sibling = upState
+				upState.lowerHunk = hunkElem
+				upState.lowerHeader = header
+			}
 		}
 
 		hunkElem.Call("appendChild", header)
 
-		for _, line := range hunk.Lines {
-			lineElem := createDiffLine(line, filePath)
-			hunkElem.Call("appendChild", lineElem)
-			appendCommentThread(hunkElem, filePath, line.NewLineNo)
+		if overviewOnly {
+			appendCommentedHunkLines(hunkElem, filePath, hunk)
+		} else {
+			for _, line := range hunk.Lines {
+				lineElem := createDiffLine(line, filePath)
+				hunkElem.Call("appendChild", lineElem)
+				appendCommentThread(hunkElem, lineElem, filePath, line.NewLineNo)
+			}
 		}
 
 		// the gap below the last hunk extends to end-of-file. The exact total is
@@ -693,13 +834,13 @@ func renderDiff(filePath string) {
 		// shorter than the diff context size already reached end-of-file, so the
 		// affordance is disabled up front; otherwise the first fetch disables it
 		// if no further lines exist.
-		if i == len(file.Hunks)-1 {
+		if !overviewOnly && i == len(file.Hunks)-1 {
 			lastEnd := hunk.NewStart + hunk.NewLines - 1
 			atEOF := hunkReachedEOF(hunk.Lines)
 			addExpandAffordance(hunkElem, filePath, expandDown, hunk, lastEnd+1, 0, atEOF)
 		}
 
-		content.Call("appendChild", hunkElem)
+		parent.Call("appendChild", hunkElem)
 		prevHunkElem = hunkElem
 	}
 }
@@ -742,10 +883,13 @@ func hunkReachedEOF(lines []DiffLine) bool {
 	return trailing < diffContextSize
 }
 
-// append a comment thread for `lineNo` to `parent` when comments exist there.
-func appendCommentThread(parent *js.Object, filePath string, lineNo int) {
+// append a comment thread for `lineNo` to `parent` when comments exist there,
+// and mark `lineElem` (the diff row the thread sits under) as commented so it can
+// carry the thread's left border and read as one block with it.
+func appendCommentThread(parent *js.Object, lineElem *js.Object, filePath string, lineNo int) {
 	comments := getCommentsForLine(filePath, lineNo)
 	if len(comments) > 0 {
+		lineElem.Get("classList").Call("add", "commented")
 		parent.Call("appendChild", lineCommentThread(filePath, lineNo, comments))
 	}
 }
@@ -1085,7 +1229,8 @@ func createCommentThread(filePath string, comments []*model.Comment) *js.Object 
 	thread.Get("classList").Call("add", "comment-thread")
 
 	for _, comment := range comments {
-		commentElem := createCommentElement(filePath, comment)
+		multipleAuthors := len(threadAuthors(filePath, comment)) > 1
+		commentElem := createCommentElement(filePath, comment, multipleAuthors)
 		thread.Call("appendChild", commentElem)
 	}
 
@@ -1107,12 +1252,44 @@ func actionButton(label string, cssClass string, onClick func()) *js.Object {
 	return btn
 }
 
+// the distinct authors across a root comment and its replies. Used to decide
+// whether to label authors: a single-author thread needs no labels, but once two
+// or more people have written in it, each entry is labelled so the reviewer can
+// tell at a glance who wrote what — including their own comments.
+func threadAuthors(filePath string, root *model.Comment) map[string]bool {
+	authors := map[string]bool{}
+	if root.Author != "" {
+		authors[root.Author] = true
+	}
+	for _, reply := range getReplies(filePath, root.ID) {
+		if reply.Author != "" {
+			authors[reply.Author] = true
+		}
+	}
+	return authors
+}
+
+// the author label for a comment when its thread has multiple authors: the
+// reviewer's own comments read as "(user)" so they are unmistakably theirs,
+// everyone else by name. Empty when the thread has a single author (no
+// disambiguation needed) or the comment has no author.
+func authorLabel(comment *model.Comment, multipleAuthors bool) string {
+	if !multipleAuthors || comment.Author == "" {
+		return ""
+	}
+	if comment.Author == currentUser {
+		return "(user)"
+	}
+	return "(" + comment.Author + ")"
+}
+
 // render a comment (root or reply) with full edit/delete/reply parity. A reply
 // is a comment whose `ParentID` is set: it is styled as a reply, omits the
 // status badge, and offers no resolve/ignore/reactivate actions because only
 // root comments carry a meaningful status. Replies are rendered after the
-// content, nested by `parent_id`.
-func createCommentElement(filePath string, comment *model.Comment) *js.Object {
+// content, nested by `parent_id`. `multipleAuthors` is the root thread's
+// author-count signal, threaded down so replies share the root's decision.
+func createCommentElement(filePath string, comment *model.Comment, multipleAuthors bool) *js.Object {
 	isReply := comment.ParentID != ""
 	commentID := comment.ID
 
@@ -1133,10 +1310,10 @@ func createCommentElement(filePath string, comment *model.Comment) *js.Object {
 		header.Call("appendChild", status)
 	}
 
-	if comment.Author != "" && comment.Author != currentUser {
+	if label := authorLabel(comment, multipleAuthors); label != "" {
 		author := doc.Call("createElement", "span")
 		author.Get("classList").Call("add", "comment-author")
-		author.Set("textContent", " ("+comment.Author+")")
+		author.Set("textContent", " "+label)
 		header.Call("appendChild", author)
 	}
 
@@ -1153,7 +1330,7 @@ func createCommentElement(filePath string, comment *model.Comment) *js.Object {
 			repliesElem := doc.Call("createElement", "div")
 			repliesElem.Get("classList").Call("add", "comment-replies")
 			for _, reply := range replies {
-				repliesElem.Call("appendChild", createCommentElement(filePath, reply))
+				repliesElem.Call("appendChild", createCommentElement(filePath, reply, multipleAuthors))
 			}
 			elem.Call("appendChild", repliesElem)
 		}
@@ -1307,12 +1484,21 @@ func patchLineThread(filePath string, lineNo int) {
 
 	existing := content.Call("querySelector", fmt.Sprintf(".comment-thread[data-line=\"%d\"]", lineNo))
 	comments := getCommentsForLine(filePath, lineNo)
+	line := content.Call("querySelector", fmt.Sprintf(".diff-line[data-line=\"%d\"]", lineNo))
 
 	if len(comments) == 0 {
 		if existing != js.Undefined && existing != nil {
 			existing.Call("remove")
 		}
+		// the last comment on this line is gone, so the line is no longer commented.
+		if line != js.Undefined && line != nil {
+			line.Get("classList").Call("remove", "commented")
+		}
 		return
+	}
+
+	if line != js.Undefined && line != nil {
+		line.Get("classList").Call("add", "commented")
 	}
 
 	thread := lineCommentThread(filePath, lineNo, comments)
@@ -1323,7 +1509,6 @@ func patchLineThread(filePath string, lineNo int) {
 	}
 
 	// no thread yet: insert immediately after the diff line it anchors.
-	line := content.Call("querySelector", fmt.Sprintf(".diff-line[data-line=\"%d\"]", lineNo))
 	if line != js.Undefined && line != nil {
 		line.Get("parentNode").Call("insertBefore", thread, line.Get("nextSibling"))
 	}

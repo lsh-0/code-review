@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The review overview now shows the code each comment is attached to: under every commented file it renders just the
+  hunks that carry feedback, clamped to a few lines around each comment, with the comment threads embedded inline and a
+  header linking to the full file. Previously it listed comments without the surrounding code.
+  - When a comment thread has more than one author, each entry is labelled — your own as "(user)" — so it is clear at a
+    glance who wrote what.
 - Opening a review is now fast on large branches: a review of 140 changed files that previously paused for around four
   seconds before showing anything now appears in under half a second. The file list loads in a couple of fixed requests
   rather than one per changed file, and each file's diff is fetched only when it is opened.

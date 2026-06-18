@@ -7,6 +7,7 @@ by optional free-text context.
 ---
 title: Ctrl-click multi-select files into a combined diff pane
 added: 2026-06-12
+updated: 2026-06-18
 effort: high
 tags: frontend, ui
 summary: Ctrl-clicking file items selects multiple files and renders them as one stacked pane on the right, each section keeping its filename header
@@ -24,12 +25,11 @@ filename header followed by that file's hunks into `#diff-content` —
 the per-file header moves from the single `#current-file-name` element
 into the stacked content so every section is labelled.
 
-Knock-on points: `selectFile`'s single-`.active` logic becomes
-multi-`.active`; comment loading (`loadComments`) and the `commentsCache`
-keyed by path must cover all selected files, not just one; and the diff
-click/scroll handlers that assume a single current file need auditing.
-Decide whether the selection set persists in review state or is
-view-only.
+Now somewhat easier: per-file hunks already load lazily (`ensureFileDiff`)
+and `renderDiff` renders one file at a time, so the data side composes for
+several files. The bulk of the work is the selection-model refactor
+(`currentFile` to a set, multi-`.active`, append-not-replace rendering)
+and auditing the single-file click/scroll handlers.
 ---
 title: Import review feedback from Bitbucket and GitHub
 added: 2026-06-12
@@ -115,23 +115,6 @@ effort: medium
 tags: frontend, ui
 summary: Pressing Ctrl-f does nothing; it should search the page for matches and highlight them
 ---
-title: Unmark files changed by new commits on refresh
-added: 2026-06-16
-updated: 2026-06-18
-effort: medium
-tags: backend, frontend
-summary: On refresh, reconcile the marked-file list against new commits since the current view, dropping files that changed or were deleted
-
-When new commits land, a file the reviewer marked may have changed and
-needs revisiting, so it should drop off the marked list; deleted files
-should drop too. Newly added files simply never appear there.
-
-Partly done: `RecomputeDiff` now reconciles marks against the diff-delta
-within a running session. The between-session case (file changed while
-the app was closed) is the subject of the `durable-file-marks` OpenSpec
-change, which stores a git blob SHA per mark; close this item once that
-lands.
----
 title: Make the file-list/diff divider draggable to resize the panes
 added: 2026-06-16
 effort: medium
@@ -168,5 +151,18 @@ since `xdg-open` opens a single file and cannot diff.
 
 Backend groundwork done: `GetWorkingTreeStatus` (`backend/gitquery.go`)
 returns tracked modified/deleted files (untracked excluded) and is bound
-to the frontend. Remaining: render the two banners and wire the difftool
-link.
+to the frontend. The external-change banner added since (show/hide plus
+CSS) is now a reusable banner pattern to copy. Remaining: render the two
+banners and wire the difftool link.
+---
+title: Build macOS and Windows binaries in CI and attach them to releases
+added: 2026-06-18
+effort: high
+tags: build, distribution, ci
+summary: Use GitHub Actions to cross-build the Wails app for macOS and Windows on tag, turn each tag into a GitHub release, and attach the artefacts
+
+Distribution is local-build only today. The Wails cross-platform guide
+(wails.io/docs/guides/crossplatform-build/) covers building per-OS in CI;
+turning a pushed tag into a release with the binaries attached is the
+companion piece. Relates to the AppImage item, which covers Linux.
+---
