@@ -145,7 +145,8 @@ func loadReviewInfo() {
 }
 
 // fetch the AI prompt (path + instructions) from the backend and write it to
-// the clipboard, giving brief feedback on the button itself.
+// the clipboard, flashing the button green on success — the same colour cue as
+// Refresh, with no label change so the button keeps its width.
 func copyStatePrompt() {
 	var prompt string
 	callBackend("GetStatePrompt", &prompt, func() {
@@ -153,41 +154,27 @@ func copyStatePrompt() {
 			return
 		}
 
-		btn := doc.Call("getElementById", "copy-prompt-btn")
-		original := btn.Get("textContent").String()
-
 		clipboard := win.Get("navigator").Get("clipboard")
 		if clipboard == js.Undefined {
 			return
 		}
 		writePromise := clipboard.Call("writeText", prompt)
 		writePromise.Call("then", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-			btn.Set("textContent", "Copied")
-			win.Call("setTimeout", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-				btn.Set("textContent", original)
-				return nil
-			}), 1500)
+			flashSuccess(doc.Call("getElementById", "copy-prompt-btn"))
 			return nil
 		}))
 	})
 }
 
+// prime `commentsCache` for every commented file in one bridge call, rather than
+// one call per changed file. `GetCommentedFiles` omits files with no comments, so
+// any file absent from the cache simply has status "none" — exactly what the file
+// list needs for its status pills. This replaces a fan-out of N round-trips (one
+// `GetComments` per changed file) that dominated startup wall-clock.
 func loadAllComments(callback func()) {
-	remaining := len(diffFiles)
-	if remaining == 0 {
+	loadCommentedFiles(func(reviewComments []*model.Comment, files []commentedFile) {
 		callback()
-		return
-	}
-
-	for _, file := range diffFiles {
-		filePath := file.Path
-		loadComments(filePath, func() {
-			remaining--
-			if remaining == 0 {
-				callback()
-			}
-		})
-	}
+	})
 }
 
 // fetch the parsed diff into `diffFiles`, then load comments and marked files,
@@ -387,11 +374,14 @@ func selectFile(filePath string) {
 	renderBrowseLink(filePath)
 
 	// render from already-loaded state: no diff recompute, no git. The diff is
-	// unchanged between selections, so selecting a file only reloads the file's
-	// comments (cheap) and renders. An agent's edits are surfaced by the explicit
-	// refresh and the external-change banner, not by paying git on every click.
-	loadComments(filePath, func() {
-		renderDiff(filePath)
+	// unchanged between selections, so selecting a file only fetches this file's
+	// hunks (lazily, once) and reloads its comments (cheap), then renders. An
+	// agent's edits are surfaced by the explicit refresh and the external-change
+	// banner, not by paying git on every click.
+	ensureFileDiff(filePath, func() {
+		loadComments(filePath, func() {
+			renderDiff(filePath)
+		})
 	})
 }
 
@@ -592,18 +582,50 @@ func loadComments(filePath string, callback func()) {
 	}, filePath)
 }
 
-func renderDiff(filePath string) {
-	var file *DiffFile
+// the index of `filePath` in `diffFiles`, or -1 if absent.
+func diffFileIndex(filePath string) int {
 	for i := range diffFiles {
 		if diffFiles[i].Path == filePath {
-			file = &diffFiles[i]
-			break
+			return i
 		}
 	}
+	return -1
+}
 
-	if file == nil {
+// ensure the in-memory `diffFiles` entry for `filePath` has its hunks, fetching
+// them from the backend when absent, then invoke `callback`. `GetDiffFiles`
+// returns metadata only, so a file's line-level hunks arrive lazily on first
+// selection; once fetched they are stored back into the entry and reused. Binary
+// files have no hunks and are left as-is. A missing entry or fetch error still
+// calls back, so the caller renders (the empty/binary path) rather than hanging.
+func ensureFileDiff(filePath string, callback func()) {
+	idx := diffFileIndex(filePath)
+	if idx == -1 {
+		callback()
 		return
 	}
+	// already loaded (has hunks) or binary (never has hunks): nothing to fetch.
+	if len(diffFiles[idx].Hunks) > 0 || diffFiles[idx].Binary {
+		callback()
+		return
+	}
+
+	var file *DiffFile
+	callBackend("GetFileDiff", &file, func() {
+		if file != nil {
+			diffFiles[idx].Hunks = file.Hunks
+			diffFiles[idx].Binary = file.Binary
+		}
+		callback()
+	}, filePath)
+}
+
+func renderDiff(filePath string) {
+	idx := diffFileIndex(filePath)
+	if idx == -1 {
+		return
+	}
+	file := &diffFiles[idx]
 
 	content := doc.Call("getElementById", "diff-content")
 	content.Set("innerHTML", "")
@@ -1448,19 +1470,57 @@ func deleteComment(filePath string, commentID string) {
 // recompute the diff from git and reload review state, then re-render the file
 // list and the visible surface. Shared by the Refresh button and the
 // external-change banner's refresh.
-func performFullRefresh() {
+// recompute the diff and reload state, re-rendering the file list and the
+// visible surface, then invoke `done` once the whole async chain has finished.
+// `done` lets the caller flash a success cue only when the work is actually
+// complete, rather than guessing at a fixed delay.
+func performFullRefresh(done func()) {
 	recomputeDiff(func() {
 		loadDiffFiles(func() {
 			renderFileList()
 			if overviewActive {
 				loadCommentedFiles(func(reviewComments []*model.Comment, files []commentedFile) {
 					renderOverview(reviewComments, files)
+					done()
 				})
 			} else if currentFile != "" {
-				renderDiff(currentFile)
+				// the reload dropped this file's hunks (GetDiffFiles is metadata
+				// only), and a recompute may have changed them, so re-fetch before
+				// rendering rather than reading the now-empty entry.
+				ensureFileDiff(currentFile, func() {
+					renderDiff(currentFile)
+					done()
+				})
+			} else {
+				done()
 			}
 		})
 	})
+}
+
+// refresh the review, flashing a brief success colour on the toolbar Refresh
+// button when it completes. Shared by the toolbar button and the change banner
+// (which hides itself first). The button's press animation is pure CSS; this
+// only adds the on-success cue, with no label or width change to avoid jostling
+// the layout.
+func triggerRefresh() {
+	performFullRefresh(func() {
+		flashSuccess(doc.Call("getElementById", "refresh-btn"))
+	})
+}
+
+// briefly add the `flash-success` class to `el`, then remove it, so a CSS
+// transition can colour it and fade back. Communicates "done" without changing
+// the element's text or size.
+func flashSuccess(el *js.Object) {
+	if el == js.Undefined || el == nil {
+		return
+	}
+	el.Get("classList").Call("add", "flash-success")
+	win.Call("setTimeout", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+		el.Get("classList").Call("remove", "flash-success")
+		return nil
+	}), 400)
 }
 
 // show the banner announcing that the review's state file was changed by
@@ -1493,8 +1553,10 @@ func setupReviewChangedBanner() {
 	}
 
 	doc.Call("getElementById", "banner-refresh-btn").Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		performFullRefresh()
+		// the banner vanishes on click, so show the refresh progress on the
+		// toolbar Refresh button instead, where it stays visible.
 		hideReviewChangedBanner()
+		triggerRefresh()
 		return nil
 	}))
 
@@ -1541,7 +1603,7 @@ func setupEventHandlers() {
 	}))
 
 	doc.Call("getElementById", "refresh-btn").Call("addEventListener", "click", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-		performFullRefresh()
+		triggerRefresh()
 		return nil
 	}))
 

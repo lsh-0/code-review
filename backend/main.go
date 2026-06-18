@@ -222,12 +222,44 @@ func (a *App) GetReviewInfo() (string, error) {
 	return string(data), nil
 }
 
+// return the changed files as metadata only — path and binary flag, without the
+// hunks. The file list needs only this to render the sidebar, and shipping every
+// file's line-level hunks in one payload was the bulk of the startup transfer
+// cost. The hunks for a single file are fetched on demand via `GetFileDiff` when
+// it is selected.
 func (a *App) GetDiffFiles() (string, error) {
-	data, err := json.Marshal(a.diffFiles)
+	type diffFileMeta struct {
+		Path   string `json:"Path"`
+		Binary bool   `json:"Binary"`
+	}
+
+	metas := make([]diffFileMeta, 0, len(a.diffFiles))
+	for _, diffFile := range a.diffFiles {
+		metas = append(metas, diffFileMeta{Path: diffFile.Path, Binary: diffFile.Binary})
+	}
+
+	data, err := json.Marshal(metas)
 	if err != nil {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// return one changed file's full diff (hunks and binary flag) as JSON, fetched
+// when that file is selected. This pairs with `GetDiffFiles`, which returns only
+// metadata, so the line-level content crosses the bridge one file at a time
+// rather than all at once on startup. An unknown path yields a null result.
+func (a *App) GetFileDiff(filePath string) (string, error) {
+	for i := range a.diffFiles {
+		if a.diffFiles[i].Path == filePath {
+			data, err := json.Marshal(a.diffFiles[i])
+			if err != nil {
+				return "", err
+			}
+			return string(data), nil
+		}
+	}
+	return "null", nil
 }
 
 // return the working-tree status (tracked files modified or deleted relative to

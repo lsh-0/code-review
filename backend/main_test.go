@@ -88,6 +88,65 @@ func TestApp_CommentStatusChanges(t *testing.T) {
 	}
 }
 
+// `GetDiffFiles` returns only path and binary metadata, never hunks, so the
+// large per-line content is not shipped in the file-list payload.
+func TestApp_GetDiffFiles_MetadataOnly(t *testing.T) {
+	app := &App{
+		diffFiles: []DiffFile{
+			{Path: "a.go", Binary: false, Hunks: []DiffHunk{{NewStart: 1, Lines: []DiffLine{{Content: "x"}}}}},
+			{Path: "img.png", Binary: true},
+		},
+	}
+
+	raw, err := app.GetDiffFiles()
+	if err != nil {
+		t.Fatalf("GetDiffFiles failed: %v", err)
+	}
+
+	var actual []map[string]any
+	if err := json.Unmarshal([]byte(raw), &actual); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(actual) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(actual))
+	}
+	if _, present := actual[0]["Hunks"]; present {
+		t.Errorf("expected no Hunks key in metadata, got %v", actual[0])
+	}
+	if actual[0]["Path"] != "a.go" || actual[1]["Binary"] != true {
+		t.Errorf("unexpected metadata: %v", actual)
+	}
+}
+
+// `GetFileDiff` returns one file's full hunks by path, and a null result for an
+// unknown path.
+func TestApp_GetFileDiff_ByPath(t *testing.T) {
+	given := DiffFile{Path: "a.go", Hunks: []DiffHunk{{NewStart: 1, Lines: []DiffLine{{Content: "x"}}}}}
+	app := &App{diffFiles: []DiffFile{given}}
+
+	raw, err := app.GetFileDiff("a.go")
+	if err != nil {
+		t.Fatalf("GetFileDiff failed: %v", err)
+	}
+
+	var actual DiffFile
+	if err := json.Unmarshal([]byte(raw), &actual); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(actual.Hunks) != 1 || actual.Hunks[0].Lines[0].Content != "x" {
+		t.Errorf("expected the file's hunks, got %+v", actual)
+	}
+
+	missing, err := app.GetFileDiff("nope.go")
+	if err != nil {
+		t.Fatalf("GetFileDiff(missing) failed: %v", err)
+	}
+	if missing != "null" {
+		t.Errorf("expected null for unknown path, got %q", missing)
+	}
+}
+
 func TestApp_CommentStatusErrors(t *testing.T) {
 	tmpDir := t.TempDir()
 

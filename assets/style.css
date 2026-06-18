@@ -168,11 +168,30 @@ header {
     border-radius: 4px;
     cursor: pointer;
     font-size: 0.8rem;
+    /* the success cue (see `.flash-success`) fades the green back over this. */
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 #refresh-btn:hover,
 #copy-prompt-btn:hover {
     background: var(--color-bg-primary);
+}
+
+/* press affordance: the button depresses slightly on click and springs back,
+   the basic indent-then-outdent every button should have. */
+#refresh-btn:active,
+#copy-prompt-btn:active {
+    transform: translateY(1px);
+}
+
+/* on-success cue: snap the button to green on completion, then let the base
+   `transition` fade it back when the class is removed. Only colour changes — no
+   size or text change, so the surrounding navigation never shifts. */
+#refresh-btn.flash-success,
+#copy-prompt-btn.flash-success {
+    background: var(--color-status-active);
+    color: white;
+    transition: none;
 }
 
 #app {

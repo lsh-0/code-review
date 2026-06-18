@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Opening a review is now fast on large branches: a review of 140 changed files that previously paused for around four
+  seconds before showing anything now appears in under half a second. The file list loads in a couple of fixed requests
+  rather than one per changed file, and each file's diff is fetched only when it is opened.
 - Selecting a file no longer recomputes the diff, so switching between files is immediate. The diff is now recomputed
   only when Refresh is pressed, where newly committed files are picked up.
 - Adding, resolving or deleting a comment updates just that comment's thread in place, keeping expanded context lines and
@@ -22,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that file — including changes made while the app was closed — returning it to the set of files still needing review.
   - The `marked_files` field in the state file changes from a list of paths to a list of `{path, blob}` records; existing
     state files are upgraded automatically on first open.
+
+### Fixed
+
+- The Refresh and Copy-AI-prompt buttons now give a press animation on click and a brief green flash on success, instead
+  of swapping their label. The label no longer changes width, so the surrounding controls no longer shift.
 
 ## [0.6.0] - 2026-06-17
 

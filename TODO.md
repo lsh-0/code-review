@@ -170,18 +170,3 @@ Backend groundwork done: `GetWorkingTreeStatus` (`backend/gitquery.go`)
 returns tracked modified/deleted files (untracked excluded) and is bound
 to the frontend. Remaining: render the two banners and wire the difftool
 link.
-    ---
-    title: Profile slow startup and Refresh-button pauses
-    added: 2026-06-18
-    effort: medium
-    tags: backend, performance 
-    summary: The ~5s startup pause and ~2s Refresh pause both stem from the synchronous git diff; profile and consider moving it off the UI path
-
-    Splitting RefreshState removed the per-file-click git cost (file
-    selection is now instant), but two pauses remain: ~5s on app startup
-    (RecomputeDiff runs a single git diff before the window paints, plus
-    Wails/WebKit init) and ~2s on the Refresh button (the same git diff,
-    now isolated to that explicit action). Profile to attribute the cost,
-    then consider running the diff off the UI path or showing progress.
-    ---
-
