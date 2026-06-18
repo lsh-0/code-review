@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-18
+
 ### Added
 
 - A banner across the top of the window when another program (such as an AI agent or a command-line tool) changes the
