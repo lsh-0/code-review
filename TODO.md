@@ -177,3 +177,14 @@ comment edits raise the banner but a new commit does not — the reviewer
 sees no prompt that the diff is now stale. A separate poll of the
 source-branch HEAD would close that gap and reuse the same banner.
 ---
+title: Re-anchor comments to their lines across commits
+added: 2026-06-18
+effort: high
+tags: backend, model, comments
+summary: A comment's line number is fixed at the commit it was made against; when a later commit shifts that line the comment should follow it rather than point at the wrong line
+
+A comment is correct for the commit it was left on, but a new commit that
+inserts or removes lines above it pushes the referenced line out of place.
+Comments already store surrounding-line context, which is the groundwork
+for relocating the anchor when the diff changes.
+---
