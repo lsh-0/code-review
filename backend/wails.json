@@ -18,7 +18,7 @@
     "comments": "A desktop-first code review tool"
   },
   "nsisType": "single",
-  "assetdir": "../assets",
+  "assetdir": "assets",
   "build:dir": "./build",
   "reloaddirs": ""
 }

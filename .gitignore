@@ -2,9 +2,11 @@ backend/build/
 dist/
 wailsjs/
 .coverage/
-assets/review.js
+backend/assets/review.js
 *.log
 
 # stray module binaries from `go build` without -o
 backend/backend
-frontend/frontend
+
+# deno bundle output (the frontend is built from ts/)
+# backend/assets/review.js is already ignored above

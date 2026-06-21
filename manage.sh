@@ -1,78 +1,71 @@
 #!/usr/bin/env bash
-# manage stuf
-
 set -e
-
-GO_VERSION="go1.19.13"
 
 # build against webkit2gtk-4.1 (libsoup3). the older webkit2gtk-4.0 packages
 # have been dropped from the Arch repos and only survive in the AUR, where they
 # no longer track ICU; 4.1 is the maintained, ICU-current package.
 WAILS_TAGS="webkit2_41"
 
-check_go_version() {
-    if ! command -v "$GO_VERSION" &> /dev/null; then
-        echo "Error: $GO_VERSION not found"
-        echo ""
-        echo "Please install Go 1.19.13:"
-        echo "  go install golang.org/dl/go1.19.13@latest"
-        echo "  go1.19.13 download"
-        exit 1
-    fi
+# the frontend is TypeScript, built with Deno: type-checked, tested, and bundled
+# to assets/review.js, which the Go binary embeds and serves. Deno is a
+# build/test-time tool only and never ships in the binary.
+cmd_deno_check() {
+    echo "Type-checking TypeScript frontend..."
+    deno task check
+}
+
+cmd_deno_test() {
+    echo "Testing TypeScript frontend..."
+    deno task test
+}
+
+cmd_deno_bundle() {
+    echo "Bundling TypeScript frontend to assets/review.js..."
+    deno task bundle
+    echo "Bundle complete: assets/review.js"
 }
 
 cmd_build() {
-    cmd_gopher_build
+    cmd_deno_bundle
     cmd_wails_build
-}
-
-cmd_gopher_build() {
-    check_go_version
-    local gopherjs_bin
-    gopherjs_bin="$(go env GOPATH)/bin/gopherjs"
-
-    if [ ! -f "$gopherjs_bin" ]; then
-        echo "Error: GopherJS not found at $gopherjs_bin"
-        echo "Run './manage.sh setup' first"
-        exit 1
-    fi
-
-    echo "Building review.js..."
-    cd frontend
-    GOWORK=off GOPHERJS_GOROOT=$("$GO_VERSION" env GOROOT) "$gopherjs_bin" build --source_map=false -o ../assets/review.js
-    cd ..
-    echo "Build complete: review.js"
 }
 
 cmd_wails_build() {
     echo "Building Wails application..."
-    cd backend
-    wails build -tags "$WAILS_TAGS" 2>&1 | grep -v "If Wails is useful" | grep -v "github.com/sponsors"
-    cd ..
+    (
+        cd backend
+        wails build -tags "$WAILS_TAGS" 2>&1 | grep -v "If Wails is useful" | grep -v "github.com/sponsors"
+    )
     echo "Build complete: backend/build/bin/code-review"
 }
 
 cmd_wails_dev() {
     echo "Running Wails in development mode..."
-    cd backend
-    wails dev -tags "$WAILS_TAGS"
+    (
+        cd backend
+        wails dev -tags "$WAILS_TAGS"
+    )
 }
 
 cmd_release() {
     cmd_clean
     echo "Building release..."
-    cmd_gopher_build
+    cmd_deno_bundle
 
     echo ""
-    read -p "Enter version [unreleased]: " version_input
+    read -r -p "Enter version [unreleased]: " version_input
     if [ -z "$version_input" ]; then
         version_input="unreleased"
     fi
 
     echo "Building Wails application for release (version: $version_input)..."
-    cd backend
-    wails build -clean -tags "$WAILS_TAGS" -ldflags "-s -w -X 'main.version=$version_input'" 2>&1 | grep -v "If Wails is useful" | grep -v "github.com/sponsors"
-    cd ..
+    (
+        cd backend
+        wails build \
+            -clean \
+            -tags "$WAILS_TAGS" \
+            -ldflags "-s -w -X 'main.version=$version_input'" 2>&1 | grep -v "If Wails is useful" | grep -v "github.com/sponsors"
+    )
 
     echo "Copying binary to dist..."
     mkdir -p dist
@@ -129,84 +122,30 @@ cmd_clean() {
     echo "Cleaning build artifacts..."
     rm -rf backend/build
     rm -rf dist
-    rm -rf wailsjs
     rm -rf .coverage
-    rm -f assets/review.js
     echo "Clean complete"
 }
 
 cmd_lint() {
-    check_go_version
-
-    # backend: standard Go 1.26 toolchain.
-    echo "Linting backend..."
-    cd backend
-    go mod tidy
-    go fmt ./...
-    go vet ./...
-    go fix ./...
-    cd ..
-
-    # model: standard Go 1.26 toolchain (also consumed by the frontend).
-    echo "Linting model..."
-    cd model
-    go mod tidy
-    go fmt ./...
-    go vet ./...
-    go fix ./...
-    cd ..
-
-    # assets: standard Go 1.26 toolchain.
-    echo "Linting assets..."
-    cd assets
-    go mod tidy
-    go fmt ./...
-    go vet ./...
-    go fix ./...
-    cd ..
-
-    # frontend: its files are gated behind //go:build js and only compile
-    # under the GopherJS 1.19 toolchain. it is tidied with that toolchain and
-    # formatted with gofmt, but go vet and go fix are omitted. gofmt is used
-    # instead of 'go fmt ./...' because the latter matches no packages: the
-    # js-gated files are excluded from the host build context.
-    echo "Linting frontend (GopherJS)..."
-    cd frontend
-    GOWORK=off "$GO_VERSION" mod tidy
-    gofmt -w .
-    cd ..
+    # the Go side is one module rooted at backend/ (model and assets are
+    # packages within it), so a single tidy/fix/fmt/vet covers everything.
+    echo "Linting Go..."
+    (
+        cd backend
+        go mod tidy
+        go fix ./...
+        go fmt ./...
+        go vet ./...
+    )
+    # frontend: TypeScript, formatted and linted by Deno.
+    echo "Linting frontend (Deno)..."
+    deno fmt
+    deno lint
 
     echo "Lint complete"
 }
 
-cmd_gopher_test() {
-    check_go_version
-    local gopherjs_bin
-    gopherjs_bin="$(go env GOPATH)/bin/gopherjs"
-
-    if [ ! -f "$gopherjs_bin" ]; then
-        echo "Error: GopherJS not found at $gopherjs_bin"
-        echo "Run './manage.sh setup' first"
-        exit 1
-    fi
-
-    echo "Running frontend tests..."
-    cd frontend
-    GOWORK=off GOPHERJS_GOROOT=$("$GO_VERSION" env GOROOT) "$gopherjs_bin" test -v
-    cd ..
-}
-
 cmd_test() {
-    check_go_version
-    local gopherjs_bin
-    gopherjs_bin="$(go env GOPATH)/bin/gopherjs"
-
-    if [ ! -f "$gopherjs_bin" ]; then
-        echo "Error: GopherJS not found at $gopherjs_bin"
-        echo "Run './manage.sh setup' first"
-        exit 1
-    fi
-
     echo "Running unit tests with coverage..."
     echo ""
 
@@ -214,78 +153,41 @@ cmd_test() {
     rm -rf "$coverage_dir"
     mkdir -p "$coverage_dir"
 
-    local model_coverage="$coverage_dir/model.out"
-    local backend_coverage="$coverage_dir/backend.out"
-    local merged_coverage="$coverage_dir/merged.out"
-
-    local model_exit=0
-    local backend_exit=0
+    local go_coverage="$coverage_dir/go.out"
+    local go_exit=0
     local frontend_exit=0
 
-    echo "=== Model Tests ==="
-    cd model
-    GOWORK=off go test -v -coverprofile="../$model_coverage" ./...
-    model_exit=$?
-    cd ..
+    # one Go module rooted at backend/ covers all packages (backend, model,
+    # assets) in a single run and a single coverage profile.
+    echo "=== Go Tests ==="
+    (
+        cd backend
+        go test -v -coverprofile="../$go_coverage" ./...
+    )
+    go_exit=$?
     echo ""
 
-    echo "=== Backend Tests ==="
-    cd backend
-    go test -v -coverprofile="../$backend_coverage" ./...
-    backend_exit=$?
-    cd ..
-    echo ""
-
-    echo "=== Frontend Tests ==="
-    cd frontend
-    GOWORK=off GOPHERJS_GOROOT=$("$GO_VERSION" env GOROOT) "$gopherjs_bin" test -v
+    echo "=== Frontend Tests (Deno) ==="
+    deno task test
     frontend_exit=$?
-    cd ..
     echo ""
 
     echo "=== Coverage Report ==="
     echo ""
 
-    if [ -f "$model_coverage" ]; then
-        echo "Model coverage:"
-        cd model
-        GOWORK=off go tool cover -func="../$model_coverage" | tail -n 1
-        cd ..
-    else
-        echo "Model coverage: N/A"
-    fi
-
-    if [ -f "$backend_coverage" ]; then
-        echo "Backend coverage:"
-        go tool cover -func="$backend_coverage" | tail -n 1
-    else
-        echo "Backend coverage:  N/A"
-    fi
-
-    if [ -f "$model_coverage" ] && [ -f "$backend_coverage" ]; then
-        echo "mode: atomic" > "$merged_coverage"
-        tail -n +2 "$model_coverage" >> "$merged_coverage"
-        tail -n +2 "$backend_coverage" >> "$merged_coverage"
-        echo ""
-        echo "Overall coverage:"
-        go tool cover -func="$merged_coverage" | tail -n 1
-        echo ""
-        echo "Merged coverage saved to: $merged_coverage"
-    elif [ -f "$model_coverage" ]; then
-        cp "$model_coverage" "$merged_coverage"
-    elif [ -f "$backend_coverage" ]; then
-        cp "$backend_coverage" "$merged_coverage"
-    fi
-
-    if [ -f "$merged_coverage" ]; then
-        go tool cover -html="$merged_coverage" -o="$coverage_dir/coverage.html"
+    if [ -f "$go_coverage" ]; then
+        echo "Go coverage:"
+        (cd backend && go tool cover -func="../$go_coverage" | tail -n 1)
+        go tool cover -html="$go_coverage" -o="$coverage_dir/coverage.html"
         echo "HTML coverage report: $coverage_dir/coverage.html"
+    else
+        echo "Go coverage: N/A"
     fi
 
     echo ""
     echo "Coverage files saved in: $coverage_dir/"
 
-    if [ $model_exit -ne 0 ] || [ $backend_exit -ne 0 ] || [ $frontend_exit -ne 0 ]; then
+    if [ $go_exit -ne 0 ] || [ $frontend_exit -ne 0 ]; then
         exit 1
     fi
 }
@@ -313,18 +215,14 @@ cmd_setup() {
             ;;
     esac
 
-    echo "Setting up Go 1.19.13 and GopherJS..."
-
-    if ! command -v "$GO_VERSION" &> /dev/null; then
-        echo "Installing Go 1.19.13 wrapper..."
-        go install golang.org/dl/go1.19.13@latest
+    if ! command -v deno &> /dev/null; then
+        echo "Error: deno not found"
+        echo ""
+        echo "Please install Deno:"
+        echo "  https://docs.deno.com/runtime/getting_started/installation/"
+        echo ""
+        exit 1
     fi
-
-    echo "Downloading Go 1.19.13..."
-    "$GO_VERSION" download
-
-    echo "Installing GopherJS v1.19.0-beta2..."
-    "$GO_VERSION" install github.com/gopherjs/gopherjs@v1.19.0-beta2
 
     echo "Installing Wails CLI..."
     go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -340,14 +238,15 @@ Code Review Tool Management Script
 Usage: ./manage.sh <command>
 
 Commands:
-    setup              Install Go 1.19.13 and GopherJS
-    build              Build frontend and Wails application
-    gopher.build       Build only the JavaScript file using GopherJS
-    gopher.test        Run frontend unit tests
+    setup              Check WebKit, install the Wails CLI
+    build              Bundle the frontend and build the Wails application
+    deno.check         Type-check the TypeScript frontend
+    deno.test          Test the TypeScript frontend
+    deno.bundle        Bundle the TypeScript frontend to assets/review.js
     wails.build        Build only the Wails application
     wails.dev          Run Wails in development mode with dev tools
     test               Run all unit tests with coverage reporting
-    lint               Tidy, format, vet and fix all Go modules
+    lint               Tidy, format and vet the Go modules; fmt/lint the frontend
     release            Build optimised release binary to dist/
     release.install    Build release and install to ~/.local/bin
     release.install --system
@@ -355,8 +254,8 @@ Commands:
     clean              Remove build artifacts
     help               Show this help message
 
-Note: This project requires Go 1.19.13 for GopherJS compatibility.
-Run './manage.sh setup' to install the required tools.
+The frontend is TypeScript, built with Deno; the backend is Go with Wails.
+Run './manage.sh setup' to check the required tools.
 
 EOF
 }
@@ -369,11 +268,14 @@ main() {
         build)
             cmd_build
             ;;
-        gopher.build)
-            cmd_gopher_build
+        deno.check)
+            cmd_deno_check
             ;;
-        gopher.test)
-            cmd_gopher_test
+        deno.test)
+            cmd_deno_test
+            ;;
+        deno.bundle)
+            cmd_deno_bundle
             ;;
         wails.build)
             cmd_wails_build

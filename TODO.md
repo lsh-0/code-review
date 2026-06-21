@@ -188,3 +188,46 @@ inserts or removes lines above it pushes the referenced line out of place.
 Comments already store surrounding-line context, which is the groundwork
 for relocating the anchor when the diff changes.
 ---
+title: Scale comment text with Ctrl+zoom like the diff text
+added: 2026-06-20
+effort: low
+tags: frontend, ui
+summary: Ctrl+zoom scales the diff code but leaves comment text at a fixed size; comments should scale with the same --zoom property
+
+Pre-existing behaviour, unchanged by the Deno frontend rewrite; noticed
+during that rewrite's webview check. The diff lines scale via the --zoom
+custom property but the comment font sizes are fixed.
+---
+title: Sort and group the file list, surfacing files needing attention at the top
+added: 2026-06-21
+effort: medium
+tags: frontend, ui
+summary: Bring standard sorting/filtering/grouping to the file list; first goal is to lift files unmarked by a state-file change or new commit to the top so they aren't hunted for by scrolling
+
+Over repeated review rounds the reviewer mainly wants the files that got
+unmarked (by agent edits or new commits) without scrolling to find them.
+Grouping by extension (review all SQL, or all shell, at once) is a likely
+later refinement.
+---
+title: Spurious downward "expand lines" affordance below a fully-deleted file
+added: 2026-06-20
+effort: medium
+tags: frontend, ui, diff
+summary: A wholly-removed file (hunk `@@ -1,3 +0,0 @@`) shows a "↓ expand 20 lines" control below its last line, but there is nothing below to expand into
+
+Seen on `assets/go.mod` shown as deleted. The downward expand control
+should be suppressed when the hunk already reaches the end of the file,
+or when the file no longer exists on the new side.
+---
+title: Empty diff pane gives no reason for renamed or binary files
+added: 2026-06-20
+effort: medium
+tags: frontend, ui, diff
+summary: Pure-rename (no content change) and binary files render a blank diff pane with no indication of why — should show "renamed, no changes" or "binary file" instead
+
+A run of files rendered empty: `backend/assets/assets.go` (a rename with
+no content change) and the `.otf` fonts (binary) show nothing in the diff
+pane, while `style.css` (rename plus real edits) renders. The reviewer
+can't tell whether the file genuinely has no changes, is binary, or the
+tool failed. Each case wants its own placeholder message.
+---

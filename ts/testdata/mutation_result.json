@@ -1,0 +1,28 @@
+{
+  "comments": [
+    {
+      "author": "Test User",
+      "content": "a note",
+      "context_after": "after",
+      "context_before": "before",
+      "context_line": "the line",
+      "id": "93f8c5609b6ab5fe",
+      "line_number": 7,
+      "status": "active"
+    },
+    {
+      "author": "Test User",
+      "content": "a reply",
+      "context_after": "",
+      "context_before": "",
+      "context_line": "",
+      "id": "2907ef6eae464a19",
+      "line_number": 0,
+      "parent_id": "93f8c5609b6ab5fe",
+      "status": "active"
+    }
+  ],
+  "file_path": "a.go",
+  "file_status": "active",
+  "line_number": 7
+}

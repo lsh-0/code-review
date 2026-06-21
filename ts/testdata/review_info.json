@@ -1,0 +1,6 @@
+{
+  "current_user": "Test User",
+  "repo_path": "/tmp/repo",
+  "source_branch": "feature",
+  "target_branch": "main"
+}

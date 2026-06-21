@@ -1,0 +1,24 @@
+{
+  "//": "Deno toolchain for the TypeScript frontend. The frontend is built and tested with Deno only; Deno never ships in the binary. See openspec/changes/replace-frontend-deno/.",
+  "tasks": {
+    "check": "deno check ts/",
+    "test": "deno test --allow-read --allow-net ts/",
+    "test-core": "deno test ts/core/",
+    "bundle": "deno bundle --platform browser --format iife --minify ts/main.ts --output backend/assets/review.js"
+  },
+  "imports": {
+    "@b-fuze/deno-dom": "jsr:@b-fuze/deno-dom@^0.1.49",
+    "@std/assert": "jsr:@std/assert@^1.0.0",
+    "highlight.js": "npm:highlight.js@^11.10.0"
+  },
+  "fmt": {
+    "include": ["ts/"]
+  },
+  "lint": {
+    "include": ["ts/"]
+  },
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["dom", "dom.iterable", "deno.ns"]
+  }
+}

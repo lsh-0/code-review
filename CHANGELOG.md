@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Diff code is now syntax-highlighted by the file's language for easier reading at a glance
+  - Highlighting uses [highlight.js](https://highlightjs.org/) for a curated set of languages; others show as plain text
+
+### Changed
+
+- The frontend has been rewritten in TypeScript, replacing the Go-to-JavaScript (GopherJS) implementation
+  - The tool looks and behaves the same, but the shipped frontend is far smaller and the code is now testable on its own
+  - Building from source now needs [Deno](https://deno.com) instead of GopherJS and a pinned Go 1.19 (build-time only)
+  - The Go code is now a single module rather than three
+
 ## [0.7.1] - 2026-06-18
 
 ### Fixed

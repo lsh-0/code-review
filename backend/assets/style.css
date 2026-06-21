@@ -900,3 +900,56 @@ button.overview-file-name:hover {
 #cancel-edit-comment-btn:hover {
     background: var(--color-status-ignored-hover);
 }
+
+/* Syntax highlighting (highlight.js token classes).
+   A compact theme matched to the tool's warm light palette rather than a stock
+   highlight.js stylesheet, so highlighted code reads consistently with the rest
+   of the UI and no external CSS dependency is pulled in. highlight.js emits
+   <span class="hljs-*"> tokens inside .line-content; these rules colour them.
+   An unrecognised language (or the plain-text fallback) emits no spans and
+   simply inherits the default text colour. */
+.line-content .hljs-comment,
+.line-content .hljs-quote {
+    color: #6c757d;
+    font-style: italic;
+}
+.line-content .hljs-keyword,
+.line-content .hljs-selector-tag,
+.line-content .hljs-literal,
+.line-content .hljs-type,
+.line-content .hljs-built_in {
+    color: #6f42c1;
+}
+.line-content .hljs-string,
+.line-content .hljs-meta-string,
+.line-content .hljs-regexp {
+    color: #a0111f;
+}
+.line-content .hljs-number,
+.line-content .hljs-symbol,
+.line-content .hljs-bullet {
+    color: #b35900;
+}
+.line-content .hljs-title,
+.line-content .hljs-section,
+.line-content .hljs-function .hljs-title,
+.line-content .hljs-name {
+    color: #7a5c00;
+    font-weight: 600;
+}
+.line-content .hljs-attr,
+.line-content .hljs-attribute,
+.line-content .hljs-variable,
+.line-content .hljs-template-variable {
+    color: #0b6b75;
+}
+.line-content .hljs-meta,
+.line-content .hljs-tag {
+    color: #6c757d;
+}
+.line-content .hljs-emphasis {
+    font-style: italic;
+}
+.line-content .hljs-strong {
+    font-weight: 700;
+}
