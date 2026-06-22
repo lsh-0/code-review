@@ -46,8 +46,10 @@ func wireFixtures() (map[string]string, error) {
 		userName:  "Test User",
 	}
 
-	// a comment mutation result, with one active comment carrying context.
-	mutationRaw, err := app.AddComment("a.go", "a note", 7, "before", "the line", "after")
+	// a comment mutation result, with one active comment carrying context. The
+	// captured window is [before, the line, after], so the anchored line is at
+	// offset 1.
+	mutationRaw, err := app.AddComment("a.go", "a note", 7, []string{"before", "the line", "after"}, 1)
 	if err != nil {
 		return nil, fmt.Errorf("AddComment: %w", err)
 	}
@@ -79,7 +81,7 @@ func wireFixtures() (map[string]string, error) {
 		{
 			Path: "a.go",
 			Comments: []*model.Comment{
-				model.NewCommentWithContext("a note", 7, "Test User", "before", "the line", "after"),
+				model.NewCommentWithContext("a note", 7, "Test User", "blob-a", []string{"before", "the line", "after"}, 1),
 			},
 		},
 	}

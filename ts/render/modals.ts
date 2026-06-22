@@ -66,7 +66,7 @@ export async function saveComment(): Promise<void> {
     return;
   }
 
-  const { before, line, after } = getLineContext(
+  const { context, offset } = getLineContext(
     diffFile(state.modal.file),
     state.modal.lineNumber,
   );
@@ -74,9 +74,8 @@ export async function saveComment(): Promise<void> {
     state.modal.file,
     content,
     state.modal.lineNumber,
-    before,
-    line,
-    after,
+    context,
+    offset,
   );
   hideCommentModal();
   applyMutation(result, mutationCtx);

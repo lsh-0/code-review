@@ -20,8 +20,8 @@ func TestNewComment(t *testing.T) {
 		t.Errorf("Expected content 'This is a test comment', got '%s'", comment.Content)
 	}
 
-	if comment.LineNumber != 10 {
-		t.Errorf("Expected line number 10, got %d", comment.LineNumber)
+	if comment.CurrentLineNumber() != 10 {
+		t.Errorf("Expected line number 10, got %d", comment.CurrentLineNumber())
 	}
 
 	if comment.Status != CommentStatusActive {
@@ -255,11 +255,9 @@ func TestGenerateID(t *testing.T) {
 }
 
 func TestNewCommentWithContext(t *testing.T) {
-	contextBefore := "line before"
-	contextLine := "target line"
-	contextAfter := "line after"
+	context := []string{"line before", "target line", "line after"}
 
-	comment := NewCommentWithContext("test comment", 10, "Test Author", contextBefore, contextLine, contextAfter)
+	comment := NewCommentWithContext("test comment", 10, "Test Author", "blob-a", context, 1)
 
 	if comment.ID == "" {
 		t.Error("Expected comment to have an ID")
@@ -269,30 +267,35 @@ func TestNewCommentWithContext(t *testing.T) {
 		t.Errorf("Expected content 'test comment', got '%s'", comment.Content)
 	}
 
-	if comment.LineNumber != 10 {
-		t.Errorf("Expected line number 10, got %d", comment.LineNumber)
+	if comment.CurrentLineNumber() != 10 {
+		t.Errorf("Expected line number 10, got %d", comment.CurrentLineNumber())
 	}
 
 	if comment.Status != CommentStatusActive {
 		t.Errorf("Expected status Active, got %s", comment.Status)
 	}
 
-	if comment.ContextBefore != contextBefore {
-		t.Errorf("Expected context before '%s', got '%s'", contextBefore, comment.ContextBefore)
+	if len(comment.Anchors) != 1 {
+		t.Fatalf("Expected 1 anchor, got %d", len(comment.Anchors))
 	}
-
-	if comment.ContextLine != contextLine {
-		t.Errorf("Expected context line '%s', got '%s'", contextLine, comment.ContextLine)
+	anchor := comment.Anchors[0]
+	if anchor.Blob != "blob-a" {
+		t.Errorf("Expected anchor blob 'blob-a', got '%s'", anchor.Blob)
 	}
-
-	if comment.ContextAfter != contextAfter {
-		t.Errorf("Expected context after '%s', got '%s'", contextAfter, comment.ContextAfter)
+	if len(anchor.Context) != len(context) {
+		t.Fatalf("Expected %d context lines, got %d", len(context), len(anchor.Context))
+	}
+	for i, want := range context {
+		if anchor.Context[i] != want {
+			t.Errorf("Context[%d]: expected '%s', got '%s'", i, want, anchor.Context[i])
+		}
 	}
 }
 
 func TestFileDiffAddCommentWithContext(t *testing.T) {
 	diff := NewFileDiff("file.go")
-	comment := diff.AddCommentWithContext("test comment", 5, "Test User", "before", "target", "after")
+	context := []string{"before", "target", "after"}
+	comment := diff.AddCommentWithContext("test comment", 5, "Test User", "blob-a", context, 1)
 
 	if len(diff.Comments) != 1 {
 		t.Fatalf("Expected 1 comment, got %d", len(diff.Comments))
@@ -302,8 +305,11 @@ func TestFileDiffAddCommentWithContext(t *testing.T) {
 		t.Error("Expected added comment to be in comments list")
 	}
 
-	if diff.Comments[0].ContextLine != "target" {
-		t.Errorf("Expected context line 'target', got '%s'", diff.Comments[0].ContextLine)
+	if len(diff.Comments[0].Anchors) != 1 {
+		t.Fatalf("Expected 1 anchor, got %d", len(diff.Comments[0].Anchors))
+	}
+	if diff.Comments[0].Anchors[0].Context[1] != "target" {
+		t.Errorf("Expected context centre 'target', got '%s'", diff.Comments[0].Anchors[0].Context[1])
 	}
 }
 
@@ -487,8 +493,8 @@ func TestReviewAddComment(t *testing.T) {
 	if comment.ParentID != "" {
 		t.Errorf("expected a root comment, got ParentID %q", comment.ParentID)
 	}
-	if comment.LineNumber != 0 {
-		t.Errorf("expected no line anchor, got line %d", comment.LineNumber)
+	if comment.CurrentLineNumber() != 0 {
+		t.Errorf("expected no line anchor, got line %d", comment.CurrentLineNumber())
 	}
 	if comment.Status != CommentStatusActive {
 		t.Errorf("expected active status, got %v", comment.Status)
@@ -623,8 +629,8 @@ func TestFileCommentStatus(t *testing.T) {
 }
 
 func TestCommentRootLine(t *testing.T) {
-	root := &Comment{ID: "root", LineNumber: 42}
-	reply := &Comment{ID: "reply", ParentID: "root", LineNumber: 0}
+	root := &Comment{ID: "root", Anchors: []Anchor{{LineNumber: 42}}}
+	reply := &Comment{ID: "reply", ParentID: "root"}
 	comments := []*Comment{root, reply}
 
 	if actual := CommentRootLine(comments, "root"); actual != 42 {
@@ -675,4 +681,188 @@ func TestMarkedFilesUnmarshalLegacyShape(t *testing.T) {
 	if actual[0].Path != "a.go" || actual[1].Path != "b.go" {
 		t.Errorf("legacy paths not preserved: %+v", actual)
 	}
+}
+
+func TestCommentCurrentLineNumber(t *testing.T) {
+	good := Anchor{Blob: "b1", LineNumber: 10, Context: []string{"a", "b", "c"}}
+	good2 := Anchor{Blob: "b2", LineNumber: 14, Context: []string{"a", "b", "c"}}
+	adrift := Anchor{Blob: "b3"}
+
+	cases := []struct {
+		name     string
+		given    []Anchor
+		expected int
+	}{
+		{"good-only history reports its latest line", []Anchor{good, good2}, 14},
+		{"trailing adrift reports 0", []Anchor{good, adrift}, 0},
+		{"all adrift reports 0", []Anchor{adrift}, 0},
+		{"no anchors reports 0", nil, 0},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			given := &Comment{Anchors: c.given}
+			actual := given.CurrentLineNumber()
+			if actual != c.expected {
+				t.Errorf("CurrentLineNumber() = %d, want %d", actual, c.expected)
+			}
+		})
+	}
+}
+
+func TestCommentIsOutdated(t *testing.T) {
+	good := Anchor{Blob: "b1", LineNumber: 10, Context: []string{"a", "b", "c"}}
+	adrift := Anchor{Blob: "b2"}
+
+	cases := []struct {
+		name     string
+		given    []Anchor
+		expected bool
+	}{
+		{"good-only history is not outdated", []Anchor{good}, false},
+		{"trailing adrift is outdated", []Anchor{good, adrift}, true},
+		{"all adrift is outdated", []Anchor{adrift}, true},
+		{"no anchors is never outdated", nil, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			given := &Comment{Anchors: c.given}
+			actual := given.IsOutdated()
+			if actual != c.expected {
+				t.Errorf("IsOutdated() = %v, want %v", actual, c.expected)
+			}
+		})
+	}
+}
+
+func TestCommentLastGoodContext(t *testing.T) {
+	good1 := Anchor{Blob: "b1", LineNumber: 10, Context: []string{"x", "y", "z"}}
+	good2 := Anchor{Blob: "b2", LineNumber: 12, Context: []string{"p", "q", "r"}}
+	adrift := Anchor{Blob: "b3"}
+
+	t.Run("good-only history returns the most recent good context", func(t *testing.T) {
+		given := &Comment{Anchors: []Anchor{good1, good2}}
+		actual := given.LastGoodContext()
+		expected := []string{"p", "q", "r"}
+		if !equalStrings(actual, expected) {
+			t.Errorf("LastGoodContext() = %v, want %v", actual, expected)
+		}
+	})
+
+	t.Run("trailing adrift falls back to the last good context", func(t *testing.T) {
+		given := &Comment{Anchors: []Anchor{good1, adrift}}
+		actual := given.LastGoodContext()
+		expected := []string{"x", "y", "z"}
+		if !equalStrings(actual, expected) {
+			t.Errorf("LastGoodContext() = %v, want %v", actual, expected)
+		}
+	})
+
+	t.Run("all adrift returns nil", func(t *testing.T) {
+		given := &Comment{Anchors: []Anchor{adrift}}
+		if actual := given.LastGoodContext(); actual != nil {
+			t.Errorf("LastGoodContext() = %v, want nil", actual)
+		}
+	})
+
+	t.Run("no anchors returns nil", func(t *testing.T) {
+		given := &Comment{}
+		if actual := given.LastGoodContext(); actual != nil {
+			t.Errorf("LastGoodContext() = %v, want nil", actual)
+		}
+	})
+}
+
+func TestCommentUnmarshalJSONLegacyUpgrade(t *testing.T) {
+	given := `{
+		"id": "c1",
+		"author": "Test User",
+		"content": "legacy note",
+		"status": "active",
+		"line_number": 7,
+		"context_before": "before",
+		"context_line": "the line",
+		"context_after": "after"
+	}`
+
+	var actual Comment
+	if err := json.Unmarshal([]byte(given), &actual); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if len(actual.Anchors) != 1 {
+		t.Fatalf("expected legacy comment to upgrade to one anchor, got %d", len(actual.Anchors))
+	}
+	anchor := actual.Anchors[0]
+	if anchor.Blob != "" {
+		t.Errorf("expected upgraded anchor to carry an empty blob, got %q", anchor.Blob)
+	}
+	if anchor.LineNumber != 7 {
+		t.Errorf("expected upgraded anchor line 7, got %d", anchor.LineNumber)
+	}
+	expectedContext := []string{"before", "the line", "after"}
+	if !equalStrings(anchor.Context, expectedContext) {
+		t.Errorf("expected upgraded context %v, got %v", expectedContext, anchor.Context)
+	}
+}
+
+func TestCommentUnmarshalJSONAnchorFormUnchanged(t *testing.T) {
+	given := `{
+		"id": "c1",
+		"author": "Test User",
+		"content": "note",
+		"status": "active",
+		"anchors": [{"blob": "sha-a", "line_number": 12, "context": ["a", "b", "c"]}]
+	}`
+
+	var actual Comment
+	if err := json.Unmarshal([]byte(given), &actual); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if len(actual.Anchors) != 1 {
+		t.Fatalf("expected anchor-form comment to load one anchor, got %d", len(actual.Anchors))
+	}
+	anchor := actual.Anchors[0]
+	if anchor.Blob != "sha-a" || anchor.LineNumber != 12 {
+		t.Errorf("expected {sha-a 12}, got {%s %d}", anchor.Blob, anchor.LineNumber)
+	}
+	if !equalStrings(anchor.Context, []string{"a", "b", "c"}) {
+		t.Errorf("expected context [a b c], got %v", anchor.Context)
+	}
+}
+
+func TestCommentUnmarshalJSONReplyGetsNoAnchor(t *testing.T) {
+	// a reply carries line_number 0 and no context: it must not be upgraded.
+	given := `{
+		"id": "r1",
+		"parent_id": "c1",
+		"author": "Test User",
+		"content": "a reply",
+		"status": "active",
+		"line_number": 0
+	}`
+
+	var actual Comment
+	if err := json.Unmarshal([]byte(given), &actual); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if len(actual.Anchors) != 0 {
+		t.Errorf("expected a reply to load with no anchors, got %d", len(actual.Anchors))
+	}
+}
+
+// report whether two string slices have equal length and equal elements.
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

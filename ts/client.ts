@@ -40,9 +40,8 @@ interface BoundApp {
     path: string,
     content: string,
     lineNumber: number,
-    contextBefore: string,
-    contextLine: string,
-    contextAfter: string,
+    context: string[],
+    offset: number,
   ): Promise<string>;
   AddReviewComment(content: string): Promise<string>;
   UpdateComment(
@@ -228,21 +227,12 @@ export const addComment = (
   path: string,
   content: string,
   lineNumber: number,
-  contextBefore: string,
-  contextLine: string,
-  contextAfter: string,
+  context: string[],
+  offset: number,
 ): Promise<CommentMutationResult> =>
   callJSON(
     "AddComment",
-    (a) =>
-      a.AddComment(
-        path,
-        content,
-        lineNumber,
-        contextBefore,
-        contextLine,
-        contextAfter,
-      ),
+    (a) => a.AddComment(path, content, lineNumber, context, offset),
   );
 
 export const addReviewComment = (

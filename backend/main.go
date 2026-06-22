@@ -156,7 +156,57 @@ func (a *App) RecomputeDiff() error {
 		}
 	}
 
+	a.reanchorComments()
+
 	return nil
+}
+
+// re-anchor every commented file's comments against the recomputed diff. It
+// fetches each commented file's current blob SHA (the same source `evictChangedMarks`
+// uses) and the new-side line contents from the freshly parsed diff, then hands
+// both to the pure `Review.ReanchorComments`. A blob-SHA lookup failure skips
+// re-anchoring this pass rather than marking comments adrift on a transient git
+// error.
+func (a *App) reanchorComments() {
+	paths := make([]string, 0, len(a.review.Files))
+	for _, file := range a.review.Files {
+		if len(file.Comments) > 0 {
+			paths = append(paths, file.FilePath)
+		}
+	}
+	if len(paths) == 0 {
+		return
+	}
+
+	blobs, err := BlobSHAs(a.repoPath, a.review.SourceBranch, paths)
+	if err != nil {
+		return
+	}
+
+	a.review.ReanchorComments(blobs, diffLinesByPath(a.diffFiles))
+}
+
+// the new-side diff lines of each file in `files`, keyed by path, each paired
+// with its new-file line number. These are the lines a comment can re-anchor
+// onto: a position absent from the diff is unreachable, so a comment whose
+// context lands only outside the diff goes adrift.
+func diffLinesByPath(files []DiffFile) map[string][]model.DiffLineRef {
+	out := make(map[string][]model.DiffLineRef, len(files))
+	for _, file := range files {
+		lines := make([]model.DiffLineRef, 0)
+		for _, hunk := range file.Hunks {
+			for _, line := range hunk.Lines {
+				if line.Type != LineRemoved {
+					lines = append(lines, model.DiffLineRef{
+						Content:    line.Content,
+						LineNumber: line.NewLineNo,
+					})
+				}
+			}
+		}
+		out[file.Path] = lines
+	}
+	return out
 }
 
 // drop the "done" mark from any file whose committed content has changed since
@@ -477,13 +527,24 @@ func (a *App) saveAndResult(filePath string, line int) (string, error) {
 	return string(data), nil
 }
 
-func (a *App) AddComment(filePath string, content string, lineNumber int, contextBefore string, contextLine string, contextAfter string) (string, error) {
+// add a line-anchored comment. `context` is the captured window of new-side
+// line contents around `lineNumber` and `offset` is the anchored line's index
+// within that window, used to re-anchor the comment as the file changes. The
+// file's current blob SHA is captured alongside it so a later
+// reconcile can tell whether the content moved; a SHA lookup failure leaves the
+// anchor's blob empty (treated as a legacy baseline on first reconcile).
+func (a *App) AddComment(filePath string, content string, lineNumber int, context []string, offset int) (string, error) {
 	fileDiff := a.review.GetFileDiff(filePath)
 	if fileDiff == nil {
 		fileDiff = a.review.AddFileDiff(filePath)
 	}
 
-	fileDiff.AddCommentWithContext(content, lineNumber, a.userName, contextBefore, contextLine, contextAfter)
+	blob := ""
+	if shas, err := BlobSHAs(a.repoPath, a.review.SourceBranch, []string{filePath}); err == nil {
+		blob = shas[filePath]
+	}
+
+	fileDiff.AddCommentWithContext(content, lineNumber, a.userName, blob, context, offset)
 
 	return a.saveAndResult(filePath, lineNumber)
 }

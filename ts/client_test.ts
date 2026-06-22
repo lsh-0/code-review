@@ -23,16 +23,19 @@ Deno.test("wire: mutation result decodes with all fields", () => {
   assertEquals(actual.comments.length, 2);
 
   const [rootC, replyC] = actual.comments;
-  // root comment carries context and a status, no parent.
+  // root comment carries a good first anchor (line, context window, offset) and
+  // a status, no parent.
   assertEquals(rootC.parent_id ?? "", "");
-  assertEquals(rootC.line_number, 7);
   assertEquals(rootC.status, "active");
-  assertEquals(rootC.context_before, "before");
-  assertEquals(rootC.context_line, "the line");
-  assertEquals(rootC.context_after, "after");
+  assert(rootC.anchors !== undefined && rootC.anchors.length === 1);
+  const anchor = rootC.anchors[0];
+  assertEquals(anchor.line_number, 7);
+  assertEquals(anchor.offset, 1);
+  assertEquals(anchor.context, ["before", "the line", "after"]);
   assert(rootC.id.length > 0);
-  // reply carries a parent_id pointing at the root.
+  // reply carries a parent_id pointing at the root and no anchor of its own.
   assertEquals(replyC.parent_id, rootC.id);
+  assertEquals(replyC.anchors ?? [], []);
 });
 
 Deno.test("wire: review info decodes with all fields", () => {
@@ -51,5 +54,7 @@ Deno.test("wire: commented files decodes with path and comments", () => {
   assertEquals(actual.length, 1);
   assertEquals(actual[0].path, "a.go");
   assertEquals(actual[0].comments.length, 1);
-  assertEquals(actual[0].comments[0].line_number, 7);
+  const anchors = actual[0].comments[0].anchors;
+  assert(anchors !== undefined && anchors.length === 1);
+  assertEquals(anchors[0].line_number, 7);
 });

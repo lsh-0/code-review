@@ -9,9 +9,10 @@ import { assert, assertEquals } from "@std/assert";
 import { setupDom } from "./dom_test_setup.ts";
 import { renderFileList } from "./filelist.ts";
 import { renderDiff } from "./hunks.ts";
-import { type CommentActions } from "./comments.ts";
+import { type CommentActions, outdatedCommentsBlock } from "./comments.ts";
+import { lastGoodContext } from "../core/comments.ts";
 import { state } from "./state.ts";
-import type { Comment, DiffFile } from "../core/types.ts";
+import type { Anchor, Comment, DiffFile } from "../core/types.ts";
 import { LineAdded, LineContext } from "../core/types.ts";
 
 const noopActions: CommentActions = {
@@ -33,13 +34,19 @@ function comment(over: Partial<Comment>): Comment {
     id: "c1",
     author: "alice",
     content: "a note",
-    line_number: 0,
     status: "active",
-    context_before: "",
-    context_line: "",
-    context_after: "",
     ...over,
   };
+}
+
+// a located anchor at `line` carrying a context window, so it is not adrift.
+function goodAnchor(line: number, context = ["ctx"]): Anchor {
+  return { blob: "x", line_number: line, offset: 0, context };
+}
+
+// an adrift anchor: no context, so its `line_number` is not meaningful.
+function adriftAnchor(): Anchor {
+  return { blob: "y", line_number: 0 };
 }
 
 Deno.test("file list: renders one item per diff file in order, with paths", () => {
@@ -63,7 +70,7 @@ Deno.test("file list: active status adds the has-comments-active pill class", ()
   const doc = setupDom();
   state.diffFiles = [{ Path: "a.go", Hunks: [], Binary: false }];
   state.commentsCache.set("a.go", [
-    comment({ status: "active", line_number: 1 }),
+    comment({ status: "active", anchors: [goodAnchor(1)] }),
   ]);
 
   renderFileList(noopFileListCb);
@@ -160,7 +167,7 @@ Deno.test("diff: a commented line embeds a thread anchored by data-line", () => 
   const doc = setupDom();
   state.diffFiles = [structuredClone(sampleFile)];
   state.commentsCache.set("a.go", [
-    comment({ id: "x", line_number: 3, content: "look here" }),
+    comment({ id: "x", anchors: [goodAnchor(3)], content: "look here" }),
   ]);
 
   renderDiff("a.go", { actions: noopActions, onAddComment: () => {} });
@@ -176,6 +183,58 @@ Deno.test("diff: a commented line embeds a thread anchored by data-line", () => 
     '#diff-content .diff-line[data-line="3"]',
   ) as unknown as HTMLElement;
   assert(row.classList.contains("commented"));
+});
+
+Deno.test("outdatedCommentsBlock: one item per outdated root with its last context", () => {
+  setupDom();
+  const context = ["line one", "line two", "line three"];
+  const outdated = comment({
+    id: "x",
+    content: "stale note",
+    anchors: [goodAnchor(3, context), adriftAnchor()],
+  });
+  const live = comment({
+    id: "y",
+    content: "live note",
+    anchors: [goodAnchor(5)],
+  });
+  const comments = [outdated, live];
+
+  const block = outdatedCommentsBlock("a.go", comments, noopActions);
+  assert(block, "expected a block when a root comment is outdated");
+  assertEquals(block.getAttribute("data-outdated"), "a.go");
+
+  const items = block.querySelectorAll(".outdated-comment");
+  assertEquals(items.length, 1);
+  const item = items[0] as unknown as HTMLElement;
+  assertEquals(item.getAttribute("data-comment"), "x");
+
+  // the pseudo-hunk has one outdated-line per lastGoodContext line.
+  const expectedContext = lastGoodContext(outdated);
+  assertEquals(expectedContext, context);
+  const hunk = item.querySelector(".outdated-hunk");
+  assert(hunk, "expected an outdated-hunk");
+  const lines = hunk.querySelectorAll(".outdated-line");
+  assertEquals(lines.length, expectedContext.length);
+  assertEquals(
+    Array.from(lines).map((l) => l.textContent),
+    expectedContext,
+  );
+
+  // each outdated line also carries the diff-line class.
+  assert((lines[0] as unknown as HTMLElement).classList.contains("diff-line"));
+
+  // the comment's content is rendered in the thread.
+  assert(item.textContent?.includes("stale note"));
+});
+
+Deno.test("outdatedCommentsBlock: null when no root comment is outdated", () => {
+  setupDom();
+  const comments = [
+    comment({ id: "a", anchors: [goodAnchor(3)] }),
+    comment({ id: "b", parent_id: "a", content: "reply" }),
+  ];
+  assertEquals(outdatedCommentsBlock("a.go", comments, noopActions), null);
 });
 
 Deno.test("diff: a binary file renders a placeholder, no lines", () => {

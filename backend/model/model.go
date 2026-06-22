@@ -14,20 +14,44 @@ const (
 	CommentStatusIgnored  CommentStatus = "ignored"
 )
 
+// An Anchor records where a comment's code lived against one version of its
+// file, keyed by that file's git blob SHA. `Context` is the captured window of
+// raw line contents around the anchored line; `Offset` is the index of the
+// anchored line within `Context` (0-based), which need not be the centre when
+// the window is clipped by a hunk edge; `LineNumber` is the new-side line it was
+// placed at. An anchor with an empty `Context` is adrift: the content could not
+// be located against that blob, so it carries no meaningful line or offset. A
+// comment owns an ordered history of these, one per distinct blob it has been
+// reconciled against.
+type Anchor struct {
+	Blob       string   `json:"blob"`
+	LineNumber int      `json:"line_number"`
+	Offset     int      `json:"offset,omitempty"`
+	Context    []string `json:"context,omitempty"`
+}
+
+// report whether the anchor failed to locate its content (no captured context).
+func (a Anchor) IsAdrift() bool {
+	return len(a.Context) == 0
+}
+
 // A Comment is a review note against a line of the diff. A reply is just a
 // Comment whose ParentID is the id of the comment it answers; a root comment
 // has an empty ParentID. Replies form a flat thread under their root and are
 // not themselves resolvable: only root comments carry a meaningful status.
+//
+// A comment is anchored through `Anchors`, an ordered history of `Anchor`
+// records (one per distinct blob it has been reconciled against). `Anchors[0]`
+// is the creation anchor and is always good. The comment's current placement
+// and whether it is outdated are derived from the most-recent anchor, never
+// stored.
 type Comment struct {
-	ID            string        `json:"id"`
-	ParentID      string        `json:"parent_id,omitempty"`
-	Author        string        `json:"author"`
-	Content       string        `json:"content"`
-	LineNumber    int           `json:"line_number"`
-	Status        CommentStatus `json:"status"`
-	ContextBefore string        `json:"context_before"`
-	ContextLine   string        `json:"context_line"`
-	ContextAfter  string        `json:"context_after"`
+	ID       string        `json:"id"`
+	ParentID string        `json:"parent_id,omitempty"`
+	Author   string        `json:"author"`
+	Content  string        `json:"content"`
+	Status   CommentStatus `json:"status"`
+	Anchors  []Anchor      `json:"anchors,omitempty"`
 }
 
 type FileDiff struct {
@@ -92,27 +116,130 @@ func GenerateID() string {
 	return hex.EncodeToString(bytes)
 }
 
+// build a comment anchored at `lineNumber` with no captured context. Used for
+// replies and review-level comments, which carry no anchor of their own (line
+// 0, empty history). A line-anchored comment with real context is made with
+// `NewCommentWithContext`.
 func NewComment(content string, lineNumber int, author string) *Comment {
+	comment := &Comment{
+		ID:      GenerateID(),
+		Author:  author,
+		Content: content,
+		Status:  CommentStatusActive,
+	}
+	if lineNumber != 0 {
+		comment.Anchors = []Anchor{{LineNumber: lineNumber}}
+	}
+	return comment
+}
+
+// build a line-anchored comment whose first anchor records `blob`, `lineNumber`,
+// the captured `context` window, and `offset` (the anchored line's index within
+// `context`). The first anchor is good (non-empty context) and becomes the
+// baseline the reconciler matches against as the file changes.
+func NewCommentWithContext(content string, lineNumber int, author string, blob string, context []string, offset int) *Comment {
 	return &Comment{
-		ID:         GenerateID(),
-		Author:     author,
-		Content:    content,
-		LineNumber: lineNumber,
-		Status:     CommentStatusActive,
+		ID:      GenerateID(),
+		Author:  author,
+		Content: content,
+		Status:  CommentStatusActive,
+		Anchors: []Anchor{{Blob: blob, LineNumber: lineNumber, Offset: offset, Context: context}},
 	}
 }
 
-func NewCommentWithContext(content string, lineNumber int, author string, contextBefore string, contextLine string, contextAfter string) *Comment {
-	return &Comment{
-		ID:            GenerateID(),
-		Author:        author,
-		Content:       content,
-		LineNumber:    lineNumber,
-		Status:        CommentStatusActive,
-		ContextBefore: contextBefore,
-		ContextLine:   contextLine,
-		ContextAfter:  contextAfter,
+// the comment's most-recent anchor, or nil if it has none (replies and
+// review-level comments).
+func (c *Comment) currentAnchor() *Anchor {
+	if len(c.Anchors) == 0 {
+		return nil
 	}
+	return &c.Anchors[len(c.Anchors)-1]
+}
+
+// the comment's current new-side line number, taken from its most-recent
+// anchor. Returns 0 when the comment has no anchor or its current anchor is
+// adrift.
+func (c *Comment) CurrentLineNumber() int {
+	anchor := c.currentAnchor()
+	if anchor == nil {
+		return 0
+	}
+	return anchor.LineNumber
+}
+
+// report whether the comment can no longer be placed against the current diff:
+// it has an anchor history whose most-recent anchor is adrift. A comment with
+// no anchors (reply, review-level) is never outdated.
+func (c *Comment) IsOutdated() bool {
+	anchor := c.currentAnchor()
+	return anchor != nil && anchor.IsAdrift()
+}
+
+// the most recent anchor that is not adrift, or nil if the comment has none.
+func (c *Comment) lastGoodAnchor() *Anchor {
+	for i := len(c.Anchors) - 1; i >= 0; i-- {
+		if !c.Anchors[i].IsAdrift() {
+			return &c.Anchors[i]
+		}
+	}
+	return nil
+}
+
+// the captured context of the most recent anchor that has one — the target the
+// reconciler matches against, and the content rendered for an outdated comment.
+// Returns nil if the comment has no good anchor.
+func (c *Comment) LastGoodContext() []string {
+	if anchor := c.lastGoodAnchor(); anchor != nil {
+		return anchor.Context
+	}
+	return nil
+}
+
+// accept both the current anchor-based form and the legacy form, which carried
+// a bare `line_number` plus `context_before`/`context_line`/`context_after` and
+// no anchor history. A legacy line-anchored comment is upgraded in place to a
+// single good first anchor with an empty blob, flagging it for baseline
+// backfill on the first reconciliation — mirroring how a legacy bare-path mark
+// carries an empty blob. So old state files load without a migration step.
+func (c *Comment) UnmarshalJSON(data []byte) error {
+	type wire struct {
+		ID            string        `json:"id"`
+		ParentID      string        `json:"parent_id,omitempty"`
+		Author        string        `json:"author"`
+		Content       string        `json:"content"`
+		Status        CommentStatus `json:"status"`
+		Anchors       []Anchor      `json:"anchors,omitempty"`
+		LineNumber    int           `json:"line_number,omitempty"`
+		ContextBefore string        `json:"context_before,omitempty"`
+		ContextLine   string        `json:"context_line,omitempty"`
+		ContextAfter  string        `json:"context_after,omitempty"`
+	}
+	var w wire
+	if err := json.Unmarshal(data, &w); err != nil {
+		return err
+	}
+	c.ID = w.ID
+	c.ParentID = w.ParentID
+	c.Author = w.Author
+	c.Content = w.Content
+	c.Status = w.Status
+	c.Anchors = w.Anchors
+
+	// already in anchor form, or an unanchored comment (reply, review-level):
+	// nothing to upgrade.
+	if len(c.Anchors) > 0 || w.LineNumber == 0 {
+		return nil
+	}
+
+	// legacy context was exactly [before, line, after]: the anchored line sits
+	// at index 1.
+	c.Anchors = []Anchor{{
+		Blob:       "",
+		LineNumber: w.LineNumber,
+		Offset:     1,
+		Context:    []string{w.ContextBefore, w.ContextLine, w.ContextAfter},
+	}}
+	return nil
 }
 
 func (c *Comment) Resolve() {
@@ -205,10 +332,10 @@ func CommentRootLine(comments []*Comment, commentID string) int {
 		return 0
 	}
 	if comment.ParentID == "" {
-		return comment.LineNumber
+		return comment.CurrentLineNumber()
 	}
 	if root := findComment(comments, comment.ParentID); root != nil {
-		return root.LineNumber
+		return root.CurrentLineNumber()
 	}
 	return 0
 }
@@ -240,8 +367,8 @@ func (f *FileDiff) AddComment(content string, lineNumber int, author string) *Co
 	return comment
 }
 
-func (f *FileDiff) AddCommentWithContext(content string, lineNumber int, author string, contextBefore string, contextLine string, contextAfter string) *Comment {
-	comment := NewCommentWithContext(content, lineNumber, author, contextBefore, contextLine, contextAfter)
+func (f *FileDiff) AddCommentWithContext(content string, lineNumber int, author string, blob string, context []string, offset int) *Comment {
+	comment := NewCommentWithContext(content, lineNumber, author, blob, context, offset)
 	f.Comments = append(f.Comments, comment)
 	return comment
 }
@@ -263,7 +390,7 @@ func (f *FileDiff) DeleteComment(commentID string) {
 func (f *FileDiff) GetCommentsByLine(lineNumber int) []*Comment {
 	result := make([]*Comment, 0)
 	for _, comment := range f.Comments {
-		if comment.LineNumber == lineNumber {
+		if comment.CurrentLineNumber() == lineNumber {
 			result = append(result, comment)
 		}
 	}

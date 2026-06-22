@@ -5,33 +5,48 @@
 
 import type { DiffFile, DiffHunk } from "./types.ts";
 
-// the surrounding context for a comment anchored at `lineNumber` in `file`: the
-// content of the new-side line, the line before it, and the line after it,
-// within the same hunk. Returns empty strings when the file or line is not
-// found. Mirrors the Go `getLineContext`.
+// how many context lines to capture on each side of a commented line. A wider
+// window than a single neighbour gives the re-anchoring heuristic more material
+// to match on as the file changes. The captured window is the anchored line
+// plus up to this many lines either side, drawn from the same hunk.
+//
+// MUST stay equal to the backend's `captureRadius` (backend/model/reanchor.go):
+// this captures the window at creation and the backend re-captures it on
+// re-anchor, so both must produce the same window size. The two constants are
+// independent; keep them in lockstep.
+export const captureContextRadius = 3;
+
+// the captured context window for a comment anchored at `lineNumber` in `file`:
+// the new-side line contents from `captureContextRadius` lines before it through
+// `captureContextRadius` lines after it, within the same hunk, paired with
+// `offset` — the index of the anchored line within the returned window. `offset`
+// equals `captureContextRadius` for an interior line and is smaller when the
+// window is clipped by the start of the hunk. Returns an empty window and offset
+// 0 when the file or line is not found. The backend reconciler anchors to the
+// line at `offset`, so the window need not be symmetric.
 export function getLineContext(
   file: DiffFile | undefined,
   lineNumber: number,
-): { before: string; line: string; after: string } {
-  const empty = { before: "", line: "", after: "" };
+): { context: string[]; offset: number } {
   if (!file) {
-    return empty;
+    return { context: [], offset: 0 };
   }
 
   for (const hunk of file.Hunks) {
     for (let i = 0; i < hunk.Lines.length; i++) {
-      const line = hunk.Lines[i];
-      if (line.NewLineNo === lineNumber) {
-        return {
-          before: i > 0 ? hunk.Lines[i - 1].Content : "",
-          line: line.Content,
-          after: i < hunk.Lines.length - 1 ? hunk.Lines[i + 1].Content : "",
-        };
+      if (hunk.Lines[i].NewLineNo !== lineNumber) {
+        continue;
       }
+      const lo = Math.max(0, i - captureContextRadius);
+      const hi = Math.min(hunk.Lines.length - 1, i + captureContextRadius);
+      return {
+        context: hunk.Lines.slice(lo, hi + 1).map((l) => l.Content),
+        offset: i - lo,
+      };
     }
   }
 
-  return empty;
+  return { context: [], offset: 0 };
 }
 
 // the number of context lines shown around a comment in the overview, so a

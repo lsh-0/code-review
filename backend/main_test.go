@@ -13,8 +13,8 @@ func TestApp_CommentStatusChanges(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	app := &App{
-		review:    model.NewReview("/tmp/repo", "feature", "main"),
-		repoPath:  "/tmp/repo",
+		review:    model.NewReview("/some/repo/path", "feature", "main"),
+		repoPath:  "/some/repo/path",
 		dataDir:   tmpDir,
 		statePath: filepath.Join(tmpDir, "test.json"),
 	}
@@ -23,7 +23,7 @@ func TestApp_CommentStatusChanges(t *testing.T) {
 	content := "test comment"
 	lineNumber := 10
 
-	_, err := app.AddComment(filePath, content, lineNumber, "before", "line", "after")
+	_, err := app.AddComment(filePath, content, lineNumber, []string{"before", "line", "after"}, 1)
 	if err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
@@ -149,8 +149,8 @@ func TestApp_CommentStatusErrors(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	app := &App{
-		review:    model.NewReview("/tmp/repo", "feature", "main"),
-		repoPath:  "/tmp/repo",
+		review:    model.NewReview("/some/repo/path", "feature", "main"),
+		repoPath:  "/some/repo/path",
 		dataDir:   tmpDir,
 		statePath: filepath.Join(tmpDir, "test.json"),
 	}
@@ -233,8 +233,8 @@ func TestApp_UpdateComment(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	app := &App{
-		review:    model.NewReview("/tmp/repo", "feature", "main"),
-		repoPath:  "/tmp/repo",
+		review:    model.NewReview("/some/repo/path", "feature", "main"),
+		repoPath:  "/some/repo/path",
 		dataDir:   tmpDir,
 		statePath: filepath.Join(tmpDir, "test.json"),
 	}
@@ -243,7 +243,7 @@ func TestApp_UpdateComment(t *testing.T) {
 	originalContent := "original comment"
 	lineNumber := 10
 
-	_, err := app.AddComment(filePath, originalContent, lineNumber, "", "", "")
+	_, err := app.AddComment(filePath, originalContent, lineNumber, nil, 0)
 	if err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
@@ -266,8 +266,8 @@ func TestApp_UpdateComment(t *testing.T) {
 func TestApp_GetCommentedFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	app := &App{
-		review:    model.NewReview("/tmp/repo", "feature", "main"),
-		repoPath:  "/tmp/repo",
+		review:    model.NewReview("/some/repo/path", "feature", "main"),
+		repoPath:  "/some/repo/path",
 		dataDir:   tmpDir,
 		statePath: filepath.Join(tmpDir, "test.json"),
 		// the overview iterates diffFiles for ordering; loadDiff normally fills
@@ -280,10 +280,10 @@ func TestApp_GetCommentedFiles(t *testing.T) {
 	}
 
 	// comments on a.go and c.go only; b.go stays comment-free and must be omitted.
-	if _, err := app.AddComment("c.go", "third", 3, "", "", ""); err != nil {
+	if _, err := app.AddComment("c.go", "third", 3, nil, 0); err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
-	if _, err := app.AddComment("a.go", "first", 1, "", "", ""); err != nil {
+	if _, err := app.AddComment("a.go", "first", 1, nil, 0); err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
 
@@ -318,8 +318,8 @@ func TestApp_GetCommentedFiles(t *testing.T) {
 func TestApp_GetCommentedFilesEmpty(t *testing.T) {
 	tmpDir := t.TempDir()
 	app := &App{
-		review:    model.NewReview("/tmp/repo", "feature", "main"),
-		repoPath:  "/tmp/repo",
+		review:    model.NewReview("/some/repo/path", "feature", "main"),
+		repoPath:  "/some/repo/path",
 		dataDir:   tmpDir,
 		statePath: filepath.Join(tmpDir, "test.json"),
 		diffFiles: []DiffFile{{Path: "a.go"}},
@@ -337,8 +337,8 @@ func TestApp_GetCommentedFilesEmpty(t *testing.T) {
 func TestApp_ReviewLevelComments(t *testing.T) {
 	tmpDir := t.TempDir()
 	app := &App{
-		review:    model.NewReview("/tmp/repo", "feature", "main"),
-		repoPath:  "/tmp/repo",
+		review:    model.NewReview("/some/repo/path", "feature", "main"),
+		repoPath:  "/some/repo/path",
 		dataDir:   tmpDir,
 		statePath: filepath.Join(tmpDir, "test.json"),
 		userName:  "Test User",
@@ -384,8 +384,8 @@ func TestApp_ReviewLevelComments(t *testing.T) {
 func TestApp_GetReviewComments(t *testing.T) {
 	tmpDir := t.TempDir()
 	app := &App{
-		review:    model.NewReview("/tmp/repo", "feature", "main"),
-		repoPath:  "/tmp/repo",
+		review:    model.NewReview("/some/repo/path", "feature", "main"),
+		repoPath:  "/some/repo/path",
 		dataDir:   tmpDir,
 		statePath: filepath.Join(tmpDir, "test.json"),
 		userName:  "Test User",
@@ -501,8 +501,8 @@ func TestApp_ReloadReview_NoGit(t *testing.T) {
 func TestApp_MutationResultShape(t *testing.T) {
 	tmpDir := t.TempDir()
 	app := &App{
-		review:    model.NewReview("/tmp/repo", "feature", "main"),
-		repoPath:  "/tmp/repo",
+		review:    model.NewReview("/some/repo/path", "feature", "main"),
+		repoPath:  "/some/repo/path",
 		dataDir:   tmpDir,
 		statePath: filepath.Join(tmpDir, "test.json"),
 		userName:  "Test User",
@@ -510,7 +510,7 @@ func TestApp_MutationResultShape(t *testing.T) {
 
 	// adding a comment returns a result anchored at its line, carrying the file's
 	// comments and an active status.
-	raw, err := app.AddComment("a.go", "note", 7, "", "", "")
+	raw, err := app.AddComment("a.go", "note", 7, nil, 0)
 	if err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
@@ -652,5 +652,122 @@ func TestApp_RecomputeDiff_EvictsChangedMark(t *testing.T) {
 	}
 	if app.review.IsFileMarked("test.txt") {
 		t.Error("expected a marked file changed by a new commit to be evicted")
+	}
+}
+
+// commit `content` to `path` in the repo at `dir` with message `msg`. Used by the
+// reconciliation integration tests to advance the source branch.
+func commitFile(t *testing.T, dir, path, content, msg string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, path), []byte(content), 0644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+	add := exec.Command("git", "add", path)
+	add.Dir = dir
+	if err := add.Run(); err != nil {
+		t.Fatalf("git add %s: %v", path, err)
+	}
+	commit := exec.Command("git", "commit", "-m", msg)
+	commit.Dir = dir
+	if err := commit.Run(); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+}
+
+// a comment placed on a line that later shifts down re-anchors to its new
+// position when the diff is recomputed; a comment whose line is deleted becomes
+// outdated. This drives the whole RecomputeDiff -> reanchorComments path through
+// real git blobs and a real parsed diff, not the pure model in isolation.
+func TestApp_RecomputeDiff_ReanchorsCommentOnShift(t *testing.T) {
+	tmpDir := setupTestRepo(t)
+	base, err := GetCurrentBranch(tmpDir)
+	if err != nil {
+		t.Fatalf("get base branch: %v", err)
+	}
+
+	// branch off and add a fresh file whose every line is added against base, so
+	// the comment's context lines are present in the recomputed diff.
+	checkout := exec.Command("git", "checkout", "-b", "feature")
+	checkout.Dir = tmpDir
+	if err := checkout.Run(); err != nil {
+		t.Fatalf("create feature branch: %v", err)
+	}
+	commitFile(t, tmpDir, "app.go", "alpha\nbravo\ncharlie\ndelta\n", "add app.go")
+	head, _ := GetCurrentBranch(tmpDir)
+
+	app := &App{
+		review:    model.NewReview(tmpDir, head, base),
+		repoPath:  tmpDir,
+		dataDir:   t.TempDir(),
+		statePath: filepath.Join(t.TempDir(), "state.json"),
+		userName:  "Test User",
+	}
+	if err := app.RecomputeDiff(); err != nil {
+		t.Fatalf("initial RecomputeDiff: %v", err)
+	}
+
+	// comment on "charlie" (new-side line 3), capturing its context window. The
+	// added lines run alpha(1) bravo(2) charlie(3) delta(4); the centre of the
+	// 3-line window is charlie.
+	if _, err := app.AddComment("app.go", "look at charlie", 3, []string{"bravo", "charlie", "delta"}, 1); err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+
+	// prepend two lines and commit: charlie shifts from line 3 to line 5.
+	commitFile(t, tmpDir, "app.go", "header-1\nheader-2\nalpha\nbravo\ncharlie\ndelta\n", "prepend headers")
+
+	if err := app.RecomputeDiff(); err != nil {
+		t.Fatalf("RecomputeDiff after shift: %v", err)
+	}
+
+	comment := app.review.GetFileDiff("app.go").Comments[0]
+	if comment.IsOutdated() {
+		t.Fatal("expected the shifted comment to re-anchor, not go outdated")
+	}
+	if actual := comment.CurrentLineNumber(); actual != 5 {
+		t.Errorf("expected the comment to re-anchor at line 5, got %d", actual)
+	}
+}
+
+func TestApp_RecomputeDiff_OutdatesCommentOnDeletedLine(t *testing.T) {
+	tmpDir := setupTestRepo(t)
+	base, err := GetCurrentBranch(tmpDir)
+	if err != nil {
+		t.Fatalf("get base branch: %v", err)
+	}
+
+	checkout := exec.Command("git", "checkout", "-b", "feature")
+	checkout.Dir = tmpDir
+	if err := checkout.Run(); err != nil {
+		t.Fatalf("create feature branch: %v", err)
+	}
+	commitFile(t, tmpDir, "app.go", "alpha\nbravo\ncharlie\ndelta\n", "add app.go")
+	head, _ := GetCurrentBranch(tmpDir)
+
+	app := &App{
+		review:    model.NewReview(tmpDir, head, base),
+		repoPath:  tmpDir,
+		dataDir:   t.TempDir(),
+		statePath: filepath.Join(t.TempDir(), "state.json"),
+		userName:  "Test User",
+	}
+	if err := app.RecomputeDiff(); err != nil {
+		t.Fatalf("initial RecomputeDiff: %v", err)
+	}
+
+	if _, err := app.AddComment("app.go", "look at charlie", 3, []string{"bravo", "charlie", "delta"}, 1); err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+
+	// rewrite the file so the commented context ("charlie") is gone entirely.
+	commitFile(t, tmpDir, "app.go", "one\ntwo\nthree\nfour\nfive\n", "rewrite app.go")
+
+	if err := app.RecomputeDiff(); err != nil {
+		t.Fatalf("RecomputeDiff after delete: %v", err)
+	}
+
+	comment := app.review.GetFileDiff("app.go").Comments[0]
+	if !comment.IsOutdated() {
+		t.Error("expected a comment whose line was deleted to become outdated")
 	}
 }

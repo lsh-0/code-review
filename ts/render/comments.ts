@@ -4,7 +4,13 @@
 // module only builds the DOM from those results and wires the action callbacks.
 
 import type { Comment } from "../core/types.ts";
-import { authorLabel, getReplies, threadAuthors } from "../core/comments.ts";
+import {
+  authorLabel,
+  getReplies,
+  lastGoodContext,
+  outdatedComments,
+  threadAuthors,
+} from "../core/comments.ts";
 import { el } from "../dom.ts";
 import { commentsFor, state } from "./state.ts";
 
@@ -36,6 +42,56 @@ export function createCommentThread(
     );
   }
   return thread;
+}
+
+// build the untethered block for every outdated root comment in `comments`, or
+// null when none are outdated. Each block shows the comment's last captured
+// context as a read-only pseudo-hunk with a warning border (no line numbers, no
+// expand affordance) followed by the comment thread. The container carries
+// `data-outdated` so an incremental update can find and replace it. Intended to
+// render at the top of the file view, above the live hunks.
+export function outdatedCommentsBlock(
+  filePath: string,
+  comments: Comment[],
+  actions: CommentActions,
+): HTMLElement | null {
+  const outdated = outdatedComments(comments);
+  if (outdated.length === 0) {
+    return null;
+  }
+
+  const container = el("div", { classes: ["outdated-comments"] });
+  container.setAttribute("data-outdated", filePath);
+  for (const comment of outdated) {
+    container.appendChild(outdatedCommentItem(filePath, comment, actions));
+  }
+  return container;
+}
+
+// one outdated comment: its captured context as a read-only pseudo-hunk followed
+// by the comment thread, wrapped so the warning styling applies to both. The
+// `data-comment` attribute lets an incremental update target this single item.
+function outdatedCommentItem(
+  filePath: string,
+  comment: Comment,
+  actions: CommentActions,
+): HTMLElement {
+  const item = el("div", { classes: ["outdated-comment"] });
+  item.setAttribute("data-comment", comment.id);
+
+  const context = lastGoodContext(comment);
+  if (context.length > 0) {
+    const hunk = el("div", { classes: ["outdated-hunk"] });
+    for (const line of context) {
+      hunk.appendChild(
+        el("div", { classes: ["diff-line", "outdated-line"], text: line }),
+      );
+    }
+    item.appendChild(hunk);
+  }
+
+  item.appendChild(createCommentThread(filePath, [comment], actions));
+  return item;
 }
 
 // a line-anchored comment thread carrying a `data-line` attribute, so an

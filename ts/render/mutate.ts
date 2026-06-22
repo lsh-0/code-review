@@ -7,7 +7,11 @@
 import type { CommentMutationResult } from "../core/types.ts";
 import { getCommentsForLine } from "../core/comments.ts";
 import { byId } from "../dom.ts";
-import { type CommentActions, lineCommentThread } from "./comments.ts";
+import {
+  type CommentActions,
+  lineCommentThread,
+  outdatedCommentsBlock,
+} from "./comments.ts";
 import { setFileStatusPill } from "./filelist.ts";
 import { commentsFor, state } from "./state.ts";
 
@@ -33,7 +37,36 @@ export function applyMutation(
   }
 
   patchLineThread(result.file_path, result.line_number, ctx.actions);
+  patchOutdatedBlock(result.file_path, ctx.actions);
   setFileStatusPill(result.file_path, result.file_status);
+}
+
+// rebuild the untethered outdated-comments block at the top of the file view
+// from the updated cache. Outdated comments carry no live line, so they cannot
+// be targeted by line like an anchored thread; the block is small, so it is
+// re-derived wholesale. Removed when no outdated comments remain (e.g. the last
+// outdated comment was deleted).
+function patchOutdatedBlock(filePath: string, actions: CommentActions): void {
+  const content = byId("diff-content");
+  if (!content) {
+    return;
+  }
+
+  const existing = content.querySelector(`.outdated-comments[data-outdated]`);
+  const block = outdatedCommentsBlock(filePath, commentsFor(filePath), actions);
+
+  if (!block) {
+    existing?.remove();
+    return;
+  }
+
+  if (existing) {
+    existing.parentNode?.replaceChild(block, existing);
+    return;
+  }
+
+  // no block yet: insert at the very top of the file view, above the hunks.
+  content.insertBefore(block, content.firstChild);
 }
 
 // re-render just the thread anchored at `lineNo` from the (already updated)

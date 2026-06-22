@@ -114,6 +114,10 @@
     --color-danger: #dc3545;
     --color-danger-hover: #c82333;
 
+    /* Warning (outdated comments: anchor lost, shown untethered) */
+    --color-warning: #d4a017;
+    --color-warning-bg: #fdf6e3;
+
     /* Shadows / overlays */
     --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -705,6 +709,46 @@ button.overview-file-name:hover {
 .diff-line.commented::before {
     opacity: 1;
     background: var(--color-status-resolved);
+}
+
+/* outdated comments: the anchor was lost after the file changed, so they render
+   untethered at the top of the file view. The warning border marks them as no
+   longer relevant to the current diff. */
+.outdated-comments {
+    margin-bottom: 1rem;
+}
+
+.outdated-comment {
+    border: 2px solid var(--color-warning);
+    border-radius: 6px;
+    background: var(--color-warning-bg);
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+}
+
+.outdated-comment:last-child {
+    margin-bottom: 0;
+}
+
+/* the captured context shown as a read-only pseudo-hunk: the code as it was when
+   the comment was made. No line numbers and no expand affordance, since there is
+   no live hunk to expand into. */
+.outdated-hunk {
+    font-family: var(--font-mono);
+    border-bottom: 1px solid var(--color-warning);
+}
+
+.outdated-line {
+    padding: 0 0.75rem;
+    white-space: pre-wrap;
+    color: var(--color-text-secondary);
+}
+
+/* the thread inside an outdated block drops its own left bar: the warning border
+   already frames the whole block. */
+.outdated-comment .comment-thread {
+    background: transparent;
+    border-left: none;
 }
 
 .comment {

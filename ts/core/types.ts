@@ -6,20 +6,35 @@
 
 export type CommentStatus = "active" | "resolved" | "ignored";
 
+// one entry in a comment's anchor history, mirroring the Go `Anchor`. `blob` is
+// the git blob SHA of the file content this anchor was computed against;
+// `context` is the captured window of raw line contents centred on the anchored
+// line. An anchor with an empty/absent `context` is adrift: the content could
+// not be located against that blob, so its `line_number` is not meaningful.
+export interface Anchor {
+  blob: string;
+  line_number: number;
+  offset?: number;
+  context?: string[];
+}
+
 // a review note against a line of the diff. A reply is a `Comment` whose
 // `parent_id` is the id of the comment it answers; a root comment has an empty
 // `parent_id`. Replies form a flat thread under their root and carry no
 // meaningful status.
+//
+// A comment is anchored through `anchors`, an ordered history (one entry per
+// distinct blob it has been reconciled against). The current placement and
+// whether the comment is outdated are derived from the most-recent anchor (see
+// `currentLineNumber`/`isOutdated` in `core/comments`), never stored. Replies
+// and review-level comments carry no anchors.
 export interface Comment {
   id: string;
   parent_id?: string;
   author: string;
   content: string;
-  line_number: number;
   status: CommentStatus;
-  context_before: string;
-  context_line: string;
-  context_after: string;
+  anchors?: Anchor[];
 }
 
 // the line classification, matching the Go `LineType` iota: 0 context, 1 added,

@@ -1,24 +1,28 @@
 {
   "comments": [
     {
+      "anchors": [
+        {
+          "blob": "",
+          "context": [
+            "before",
+            "the line",
+            "after"
+          ],
+          "line_number": 7,
+          "offset": 1
+        }
+      ],
       "author": "Test User",
       "content": "a note",
-      "context_after": "after",
-      "context_before": "before",
-      "context_line": "the line",
-      "id": "93f8c5609b6ab5fe",
-      "line_number": 7,
+      "id": "9ea7b1c352781322",
       "status": "active"
     },
     {
       "author": "Test User",
       "content": "a reply",
-      "context_after": "",
-      "context_before": "",
-      "context_line": "",
-      "id": "2907ef6eae464a19",
-      "line_number": 0,
-      "parent_id": "93f8c5609b6ab5fe",
+      "id": "4900f6b7b78e2b48",
+      "parent_id": "9ea7b1c352781322",
       "status": "active"
     }
   ],

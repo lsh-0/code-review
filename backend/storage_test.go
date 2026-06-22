@@ -60,6 +60,103 @@ func TestSaveAndLoadReview(t *testing.T) {
 	}
 }
 
+// a state file written before the anchor change carries `line_number` and
+// `context_*` on each comment and no `anchors`. Loading it must upgrade each
+// line-anchored comment to a single legacy first anchor (empty blob) in place,
+// with no separate migration step, so old files open unchanged.
+func TestLoadReviewUpgradesLegacyComment(t *testing.T) {
+	tmpDir := t.TempDir()
+	statePath := filepath.Join(tmpDir, "legacy_state.json")
+
+	legacy := `{
+  "id": "rev1",
+  "repo_path": "/repo",
+  "source_branch": "feature",
+  "target_branch": "main",
+  "files": [
+    {
+      "file_path": "a.go",
+      "comments": [
+        {
+          "id": "c1",
+          "author": "Test User",
+          "content": "a note",
+          "line_number": 12,
+          "status": "active",
+          "context_before": "before",
+          "context_line": "the line",
+          "context_after": "after"
+        }
+      ]
+    }
+  ]
+}`
+	if err := os.WriteFile(statePath, []byte(legacy), 0o644); err != nil {
+		t.Fatalf("write legacy state: %v", err)
+	}
+
+	loaded, err := LoadReview(statePath)
+	if err != nil {
+		t.Fatalf("expected a legacy state file to load without a migration step: %v", err)
+	}
+
+	comment := loaded.Files[0].Comments[0]
+	if len(comment.Anchors) != 1 {
+		t.Fatalf("expected the legacy comment to upgrade to one anchor, got %d", len(comment.Anchors))
+	}
+	anchor := comment.Anchors[0]
+	if anchor.Blob != "" {
+		t.Errorf("expected the upgraded anchor to carry an empty (legacy) blob, got %q", anchor.Blob)
+	}
+	if anchor.LineNumber != 12 {
+		t.Errorf("expected the upgraded anchor at line 12, got %d", anchor.LineNumber)
+	}
+	expected := []string{"before", "the line", "after"}
+	if len(anchor.Context) != 3 || anchor.Context[0] != expected[0] || anchor.Context[1] != expected[1] || anchor.Context[2] != expected[2] {
+		t.Errorf("expected the upgraded context %v, got %v", expected, anchor.Context)
+	}
+	if anchor.Offset != 1 {
+		t.Errorf("expected the legacy anchored line at offset 1, got %d", anchor.Offset)
+	}
+	if comment.IsOutdated() {
+		t.Error("expected an upgraded legacy comment to be current, not outdated")
+	}
+}
+
+// a comment created with the anchor API survives a save/load round-trip with its
+// full anchor history intact.
+func TestSaveAndLoadPreservesAnchorHistory(t *testing.T) {
+	tmpDir := t.TempDir()
+	statePath := filepath.Join(tmpDir, "anchor_state.json")
+
+	review := model.NewReview("/repo", "feature", "main")
+	diff := review.AddFileDiff("a.go")
+	comment := diff.AddCommentWithContext("a note", 7, "Test User", "blob-1", []string{"x", "y", "z"}, 1)
+	// a second anchor: the file moved and the comment re-anchored to line 9.
+	comment.Anchors = append(comment.Anchors, model.Anchor{
+		Blob: "blob-2", LineNumber: 9, Offset: 1, Context: []string{"x", "y", "z"},
+	})
+
+	if err := SaveReview(statePath, review); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	loaded, err := LoadReview(statePath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	got := loaded.Files[0].Comments[0]
+	if len(got.Anchors) != 2 {
+		t.Fatalf("expected 2 anchors to survive the round-trip, got %d", len(got.Anchors))
+	}
+	if got.CurrentLineNumber() != 9 {
+		t.Errorf("expected the current line to be the most-recent anchor's 9, got %d", got.CurrentLineNumber())
+	}
+	if got.Anchors[0].Blob != "blob-1" || got.Anchors[1].Blob != "blob-2" {
+		t.Errorf("expected anchor blobs [blob-1 blob-2], got [%s %s]", got.Anchors[0].Blob, got.Anchors[1].Blob)
+	}
+}
+
 func TestSaveReviewStampsEmbeddedReadme(t *testing.T) {
 	given := model.NewReview("/repo", "feature", "main")
 	statePath := filepath.Join(t.TempDir(), "review_state.json")

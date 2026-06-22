@@ -8,7 +8,7 @@ import type { DiffHunk } from "../core/types.ts";
 import { expandDown, expandUp, hunkReachedEOF } from "../core/expand.ts";
 import { hunkHasComments, overviewVisibleLines } from "../core/overview.ts";
 import { byId, clear, el } from "../dom.ts";
-import { type CommentActions } from "./comments.ts";
+import { type CommentActions, outdatedCommentsBlock } from "./comments.ts";
 import {
   appendCommentThread,
   createDiffLine,
@@ -19,7 +19,7 @@ import {
   type ExpandContext,
   linkSiblings,
 } from "./expand.ts";
-import { diffFile } from "./state.ts";
+import { commentsFor, diffFile } from "./state.ts";
 
 export interface DiffCallbacks {
   actions: CommentActions;
@@ -65,6 +65,20 @@ export function renderFileHunks(
     actions: cb.actions,
     onAddComment: cb.onAddComment,
   };
+
+  // outdated comments render untethered at the top of the single-file view: they
+  // no longer anchor to any live hunk. The overview gathers per-hunk feedback and
+  // omits them.
+  if (!overviewOnly) {
+    const outdated = outdatedCommentsBlock(
+      filePath,
+      commentsFor(filePath),
+      cb.actions,
+    );
+    if (outdated) {
+      parent.appendChild(outdated);
+    }
+  }
 
   let prevHunkElem: HTMLElement | null = null;
   for (let i = 0; i < file.Hunks.length; i++) {
