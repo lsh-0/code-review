@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Comments now follow their code when a file changes during review, instead of silently sliding onto unrelated lines
+  - A comment whose line moves re-anchors to its new position on refresh, and recovers if the change is later reverted
+  - When its code is gone, the comment is marked outdated and shown on its own with a warning border until you delete it
 - Diff code is now syntax-highlighted by the file's language for easier reading at a glance
   - Highlighting uses [highlight.js](https://highlightjs.org/) for a curated set of languages; others show as plain text
 
