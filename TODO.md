@@ -231,3 +231,13 @@ pane, while `style.css` (rename plus real edits) renders. The reviewer
 can't tell whether the file genuinely has no changes, is binary, or the
 tool failed. Each case wants its own placeholder message.
 ---
+title: Overview keeps an empty file section after its last comment is deleted
+added: 2026-06-23
+effort: medium
+tags: frontend, ui, overview, comments
+summary: Deleting a comment in the review overview can leave the file's header showing with no hunk beneath it; a file with no remaining feedback should drop out of the overview entirely
+
+The overview gathers files by their feedback, so once a file's last comment
+is removed it has nothing to show and should disappear rather than leave a
+stranded header.
+---
