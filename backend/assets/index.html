@@ -25,10 +25,19 @@
                         <button id="copy-prompt-btn" title="Copy an AI prompt that points at this review's state file">Copy AI prompt</button>
                     </div>
                 </header>
-                <h2>Files Changed</h2>
+                <div id="file-group-control">
+                    <label for="file-grouping">Group by:</label>
+                    <select id="file-grouping"></select>
+                </div>
+                <input id="file-filter" type="text" autocomplete="off"
+                       spellcheck="false" placeholder="Filter files…"
+                       aria-label="Filter the file list">
                 <div id="files"></div>
                 <div id="overview-footer"></div>
             </div>
+
+            <div id="pane-resizer" role="separator" aria-orientation="vertical"
+                 tabindex="0" aria-label="Resize the file list"></div>
 
             <div id="diff-view">
                 <div id="current-file-header">

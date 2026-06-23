@@ -74,6 +74,14 @@
     --color-border-light: #ddd;
     --color-border-input: #d1d5da;
 
+    /* Classic (GTK2/Win95-style) scrollbar in a discreet cool blue-grey: a flat
+       track and a raised, bevelled thumb. */
+    --color-scrollbar-track: #dde1e7;
+    --color-scrollbar-thumb: #b9c1cc;
+    --color-scrollbar-thumb-hover: #a7b1bf;
+    --color-scrollbar-light: #f4f6f9;
+    --color-scrollbar-dark: #8b949f;
+
     /* Accent / interactive */
     --color-accent: #0366d6;
     --color-accent-hover: #0256c7;
@@ -256,38 +264,171 @@ header {
 
 #file-list {
     width: 300px;
+    flex: 0 0 auto;
     background: var(--color-nav-bg);
-    border-right: 1px solid var(--color-border-light);
     overflow: hidden;
     display: flex;
     flex-direction: column;
 }
 
-#file-list h2 {
+/* the draggable divider between the file list and the diff. Deliberately chunky
+   for an easy grab target and keyboard-focusable for accessibility; the JS sets
+   the file-list width inline as it is dragged. */
+#pane-resizer {
     flex: 0 0 auto;
-    font-size: 1rem;
-    font-weight: 600;
-    padding: 1rem;
-    margin: 0;
-    color: var(--color-text-secondary);
-    background: var(--color-nav-bg);
-    border-bottom: 1px solid var(--color-border);
+    width: 8px;
+    cursor: col-resize;
+    background: var(--color-border-light);
+    border-left: 1px solid var(--color-border);
+    border-right: 1px solid var(--color-border);
+    box-sizing: border-box;
+}
+
+#pane-resizer:hover,
+#pane-resizer.dragging {
+    background: var(--color-accent);
+}
+
+#pane-resizer:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
 }
 
 #file-list > header {
     flex: 0 0 auto;
 }
 
+/* the "Group by" row: sits between the header and the filter box, partitioning
+   the file list under headings. */
+#file-group-control {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--color-nav-bg);
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+}
+
+#file-group-control label {
+    flex: 0 0 auto;
+}
+
+#file-group-control select {
+    flex: 1;
+    min-width: 0;
+    padding: 0.2rem 0.3rem;
+    border: 1px solid var(--color-border-input);
+    border-radius: 4px;
+    background: var(--color-bg-primary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    color: var(--color-text);
+}
+
+/* a heading above each group of files when a grouper is active. */
+.file-group-heading {
+    padding: 0.5rem 0.25rem 0.35rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+}
+
+/* the file-list filter box: full width of the column, pinned beneath the header
+   so it stays put while the list scrolls. Typing into it filters the files. */
+#file-filter {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-nav-bg);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--color-text);
+}
+
+#file-filter::placeholder {
+    color: var(--color-text-muted);
+}
+
+#file-filter:focus {
+    outline: none;
+    background: var(--color-hover-bg);
+}
+
 #files {
     padding: 1rem;
     flex: 1;
     overflow-y: auto;
+    overflow-x: auto;
+    /* place the vertical scrollbar on the far left, mirroring the diff pane's
+       right-hand scrollbar across the divider. The rows reset to `ltr` below so
+       only the scrollbar moves, not the content. */
+    direction: rtl;
+}
+
+/* the classic bevelled scrollbar, shared by the file list and the diff pane so
+   both sides match. WebKitGTK honours `::-webkit-scrollbar`; it is always shown
+   (not an overlay) and chunky. */
+#files::-webkit-scrollbar,
+#diff-view::-webkit-scrollbar {
+    width: 16px;
+    height: 16px;
+}
+
+/* drop the engine's arrow steppers: they are not colourable and otherwise pick
+   up each pane's own background, making the two scrollbars look mismatched. */
+#files::-webkit-scrollbar-button,
+#diff-view::-webkit-scrollbar-button {
+    display: none;
+}
+
+/* the file list scrolls horizontally when its column is dragged narrow, but the
+   horizontal bar is hidden — only the vertical (left-hand) bar shows. */
+#files::-webkit-scrollbar:horizontal {
+    height: 0;
+}
+
+#files::-webkit-scrollbar-track,
+#diff-view::-webkit-scrollbar-track {
+    background: var(--color-scrollbar-track);
+}
+
+#files::-webkit-scrollbar-thumb,
+#diff-view::-webkit-scrollbar-thumb {
+    background: var(--color-scrollbar-thumb);
+    /* a raised bevel: light on the top/left, dark on the bottom/right. */
+    border-top: 2px solid var(--color-scrollbar-light);
+    border-left: 2px solid var(--color-scrollbar-light);
+    border-bottom: 2px solid var(--color-scrollbar-dark);
+    border-right: 2px solid var(--color-scrollbar-dark);
+}
+
+#files::-webkit-scrollbar-thumb:hover,
+#diff-view::-webkit-scrollbar-thumb:hover {
+    background: var(--color-scrollbar-thumb-hover);
+}
+
+#files::-webkit-scrollbar-corner,
+#diff-view::-webkit-scrollbar-corner {
+    background: var(--color-scrollbar-track);
 }
 
 .file-item {
+    /* reset the rtl flip from `#files` so the row content reads left-to-right. */
+    direction: ltr;
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    /* hold a readable width so a narrow column scrolls rather than crushing rows. */
+    min-width: 12rem;
     padding: 0.75rem;
     margin-bottom: 0.5rem;
     background: var(--color-nav-item-bg);

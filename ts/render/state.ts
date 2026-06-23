@@ -23,6 +23,12 @@ export interface ViewState {
   // the set of files the reviewer has marked done.
   markedFiles: Set<string>;
 
+  // the current file-list filter term; an empty string shows every file.
+  fileFilter: string;
+
+  // the key of the active file-list grouper; "none" renders a flat list.
+  fileGrouping: string;
+
   // transient modal context: which file/line/comment the open modal acts on.
   modal: {
     file: string;
@@ -42,6 +48,8 @@ export const state: ViewState = {
   diffFiles: [],
   commentsCache: new Map(),
   markedFiles: new Set(),
+  fileFilter: "",
+  fileGrouping: "none",
   modal: {
     file: "",
     lineNumber: 0,

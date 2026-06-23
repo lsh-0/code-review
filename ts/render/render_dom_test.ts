@@ -96,6 +96,64 @@ Deno.test("file list: a marked file renders a checked checkbox", () => {
   assertEquals(checkbox.checked, true);
 });
 
+Deno.test("file list: an active filter renders only matching files", () => {
+  const doc = setupDom();
+  state.diffFiles = [
+    { Path: "ts/render/modals.ts", Hunks: [], Binary: false },
+    { Path: "backend/main.go", Hunks: [], Binary: false },
+  ];
+  state.fileFilter = "modal";
+
+  renderFileList(noopFileListCb);
+
+  const paths = Array.from(doc.querySelectorAll("#files .file-item")).map((i) =>
+    (i as unknown as HTMLElement).dataset.path
+  );
+  assertEquals(paths, ["ts/render/modals.ts"]);
+});
+
+Deno.test("file list: the overview entry stays visible under a filter that matches no file", () => {
+  const doc = setupDom();
+  state.diffFiles = [{ Path: "backend/main.go", Hunks: [], Binary: false }];
+  state.fileFilter = "no-such-file";
+
+  renderFileList(noopFileListCb);
+
+  assertEquals(doc.querySelectorAll("#files .file-item").length, 0);
+  assert(doc.querySelector("#overview-footer .overview-item"));
+});
+
+Deno.test("file list: grouping by mark renders headings, unmarked group first", () => {
+  const doc = setupDom();
+  state.diffFiles = [
+    { Path: "a.go", Hunks: [], Binary: false },
+    { Path: "b.go", Hunks: [], Binary: false },
+  ];
+  state.markedFiles = new Set(["a.go"]);
+  state.fileGrouping = "marked";
+
+  renderFileList(noopFileListCb);
+
+  const headings = Array.from(
+    doc.querySelectorAll("#files .file-group-heading"),
+  )
+    .map((h) => h.textContent);
+  assertEquals(headings, ["Unmarked", "Marked"]);
+
+  // the first item under the first heading is the unmarked file.
+  const firstItem = doc.querySelector("#files .file-item");
+  assertEquals((firstItem as unknown as HTMLElement).dataset.path, "b.go");
+});
+
+Deno.test("file list: a flat list (grouping none) renders no group heading", () => {
+  const doc = setupDom();
+  state.diffFiles = [{ Path: "a.go", Hunks: [], Binary: false }];
+
+  renderFileList(noopFileListCb);
+
+  assertEquals(doc.querySelectorAll("#files .file-group-heading").length, 0);
+});
+
 Deno.test("file list: the overview footer entry is always rendered", () => {
   const doc = setupDom();
   state.diffFiles = [{ Path: "a.go", Hunks: [], Binary: false }];

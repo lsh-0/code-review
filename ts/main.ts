@@ -4,11 +4,13 @@
 // Bundled to `assets/review.js` and loaded by `index.html`.
 
 import * as api from "./client.ts";
-import { byId, requireId } from "./dom.ts";
+import { byId, el, requireId } from "./dom.ts";
 import { state } from "./render/state.ts";
+import { clampPaneWidth } from "./core/panes.ts";
 import { type CommentActions } from "./render/comments.ts";
 import { type DiffCallbacks, renderDiff } from "./render/hunks.ts";
 import { renderFileList } from "./render/filelist.ts";
+import { groupers } from "./core/grouping.ts";
 import { renderOverview } from "./render/overview.ts";
 import { type MutationContext } from "./render/mutate.ts";
 import {
@@ -239,6 +241,91 @@ function setupReviewChangedBanner(): void {
   );
 }
 
+// the keyboard nudge applied to the column width per arrow-key press.
+const paneKeyboardStep = 24;
+
+// wire the divider between the file list and the diff: dragging it (pointer or
+// arrow keys) resizes the file-list column, clamped so a sliver of each pane
+// always shows. In-session only — the width resets to the CSS default on reload.
+function setupPaneResizer(): void {
+  const resizer = byId("pane-resizer");
+  const fileList = byId("file-list");
+  if (!resizer || !fileList) {
+    return;
+  }
+
+  const applyWidth = (widthPx: number): void => {
+    fileList.style.width = `${
+      clampPaneWidth(widthPx, globalThis.innerWidth)
+    }px`;
+  };
+
+  resizer.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    resizer.classList.add("dragging");
+    resizer.setPointerCapture(ev.pointerId);
+
+    const onMove = (move: PointerEvent): void => {
+      // the column starts at the left edge, so its width is the cursor's x.
+      applyWidth(move.clientX - fileList.getBoundingClientRect().left);
+    };
+    const onUp = (): void => {
+      resizer.classList.remove("dragging");
+      resizer.removeEventListener("pointermove", onMove);
+    };
+    resizer.addEventListener("pointermove", onMove);
+    resizer.addEventListener("pointerup", onUp, { once: true });
+    resizer.addEventListener("pointercancel", onUp, { once: true });
+  });
+
+  resizer.addEventListener("keydown", (ev) => {
+    const delta = ev.key === "ArrowLeft"
+      ? -paneKeyboardStep
+      : ev.key === "ArrowRight"
+      ? paneKeyboardStep
+      : 0;
+    if (delta === 0) {
+      return;
+    }
+    ev.preventDefault();
+    applyWidth(fileList.getBoundingClientRect().width + delta);
+  });
+}
+
+// wire the "Group by" dropdown: populate it from the available groupers, select
+// the current one, and re-render the list when the choice changes. In-session
+// only — the grouping resets to the default ("none") on reload.
+function setupGroupControl(): void {
+  const select = byId("file-grouping");
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+  for (const grouper of groupers) {
+    select.appendChild(
+      el("option", { text: grouper.label, attrs: { value: grouper.key } }),
+    );
+  }
+  select.value = state.fileGrouping;
+  select.addEventListener("change", () => {
+    state.fileGrouping = select.value;
+    renderFileList(fileListCallbacks);
+  });
+}
+
+// wire the file-list filter box: each keystroke updates the filter term and
+// re-renders the list, hiding files whose path does not match. The current
+// selection is left untouched, so an open diff stays open even when filtered out.
+function setupFileFilter(): void {
+  const input = byId("file-filter");
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+  input.addEventListener("input", () => {
+    state.fileFilter = input.value;
+    renderFileList(fileListCallbacks);
+  });
+}
+
 // dismiss a modal when the click both starts and ends on the backdrop itself.
 function setupModalBackdrop(modal: HTMLElement): void {
   let mousedownTarget: EventTarget | null = null;
@@ -290,6 +377,10 @@ function setupEventHandlers(): void {
       }
     }
   });
+
+  setupPaneResizer();
+  setupGroupControl();
+  setupFileFilter();
 
   byId("refresh-btn")?.addEventListener("click", () => void triggerRefresh());
   byId("copy-prompt-btn")?.addEventListener(

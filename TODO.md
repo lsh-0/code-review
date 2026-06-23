@@ -241,3 +241,9 @@ The overview gathers files by their feedback, so once a file's last comment
 is removed it has nothing to show and should disappear rather than leave a
 stranded header.
 ---
+title: Ctrl-scrolling in the file list resizes the wrong pane via zoom
+added: 2026-06-23
+effort: low
+tags: frontend, ui
+summary: Ctrl-scroll inside the file list pane changes the zoom/size of the diff pane; it should be contained or do nothing there
+---

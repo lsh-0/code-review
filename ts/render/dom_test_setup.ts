@@ -44,6 +44,8 @@ export function setupDom(): HTMLDocument {
   state.diffFiles = [];
   state.commentsCache = new Map();
   state.markedFiles = new Set();
+  state.fileFilter = "";
+  state.fileGrouping = "none";
 
   return doc;
 }
