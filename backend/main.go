@@ -365,13 +365,10 @@ func (a *App) BrowseFile(filePath string) error {
 	return OpenInPreferredApp(a.repoPath, filePath)
 }
 
-// a ready-to-paste prompt pointing a tool at the state file. The file's own
-// `_readme` field carries the schema and instructions, so this stays short.
+// a ready-to-paste prompt pointing an agent at the CLI. The full contract lives
+// in the `instructions` command, so this only directs the agent there.
 func (a *App) GetStatePrompt() string {
-	return fmt.Sprintf("Read the code review state file at %s and follow the instructions in its `_readme` field: "+
-		"address every comment with status 'active' (mechanical changes first, then larger ones) and set each to 'resolved' once done; "+
-		"do not mark anything 'ignored' on your own — instead leave it 'active' and add a reply explaining the blocker; "+
-		"and unmark any file you change by removing it from `marked_files`.", a.statePath)
+	return readmePointer
 }
 
 func (a *App) GetComments(filePath string) (string, error) {
@@ -635,6 +632,13 @@ func (a *App) DeleteComment(filePath string, commentID string) (string, error) {
 }
 
 func main() {
+	// route to the agent-facing CLI when invoked with a recognised command or a
+	// help flag, before any GUI/flag handling. A bare invocation and the GUI's
+	// own flags (e.g. `--version`) fall through to the GUI path below.
+	if args := os.Args[1:]; isCLIInvocation(args) {
+		os.Exit(runCLI(args, os.Stdout, os.Stderr))
+	}
+
 	versionFlag := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 

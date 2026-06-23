@@ -157,7 +157,7 @@ func TestSaveAndLoadPreservesAnchorHistory(t *testing.T) {
 	}
 }
 
-func TestSaveReviewStampsEmbeddedReadme(t *testing.T) {
+func TestSaveReviewStampsReadmePointer(t *testing.T) {
 	given := model.NewReview("/repo", "feature", "main")
 	statePath := filepath.Join(t.TempDir(), "review_state.json")
 
@@ -170,13 +170,13 @@ func TestSaveReviewStampsEmbeddedReadme(t *testing.T) {
 		t.Fatalf("Failed to load review: %v", err)
 	}
 
-	expected := statefileUsage
-	if loaded.Readme != expected {
-		t.Errorf("Expected _readme stamped from embedded readme.md, got %q", loaded.Readme)
+	if loaded.Readme != readmePointer {
+		t.Errorf("Expected _readme stamped with the pointer, got %q", loaded.Readme)
 	}
 
-	if !strings.Contains(loaded.Readme, "code-review state file") {
-		t.Errorf("Embedded readme.md appears empty or wrong: %q", loaded.Readme)
+	// the pointer must direct the reader at the CLI, not embed the contract.
+	if !strings.Contains(loaded.Readme, "code-review instructions") {
+		t.Errorf("Readme pointer should reference `code-review instructions`, got %q", loaded.Readme)
 	}
 }
 
