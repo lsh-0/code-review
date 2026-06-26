@@ -3,12 +3,14 @@
 ### Requirement: Versioned CUE schema for the state file
 The project SHALL define the structure of a valid state file as a CUE schema, embedded in the binary, that describes the current `Review` shape: review metadata (`id`, `repo_path`, `source_branch`, `target_branch`), the `files` array of file diffs, file and review-level `comments` with their `anchors`, and the `marked_files` set. The schema SHALL permit an optional `_readme` field as an opaque string but SHALL NOT constrain its content (the field is slated for removal in a future change). The CUE schema SHALL be the authoritative definition of state-file structure.
 
+Validation runs against the decoded review, so a JSON type mismatch is caught during decoding (a parse failure) before the schema is applied; the schema enforces value-level and structural constraints — enumerations, non-empty identifiers, the `version` literal, and overall shape.
+
 #### Scenario: Schema accepts a well-formed state file
 - **WHEN** a state file produced by the current program is evaluated against the schema
 - **THEN** evaluation succeeds with no errors
 
 #### Scenario: Schema rejects a structurally invalid state file
-- **WHEN** a state file with a field of the wrong type or a missing required field (for example a comment with no `id`) is evaluated against the schema
+- **WHEN** a state file with a disallowed value (for example a comment `status` outside `active`/`resolved`/`ignored`) or an empty required identifier (a comment with no `id`) is evaluated against the schema
 - **THEN** evaluation fails and reports the offending path
 
 ### Requirement: SchemaVer versioning of the schema

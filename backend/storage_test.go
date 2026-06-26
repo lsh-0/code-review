@@ -220,12 +220,47 @@ func TestSaveRejectsNonConformingReview(t *testing.T) {
 	comment.Status = "bogus" // not a valid CommentStatus
 
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	if err := SaveReview(statePath, review); err == nil {
+	err := SaveReview(statePath, review)
+	if err == nil {
 		t.Fatal("expected SaveReview to reject a non-conforming review")
 	}
+	if !strings.Contains(err.Error(), "comments.0.status") {
+		t.Errorf("expected the error to name the offending field path, got %v", err)
+	}
 
-	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
-		t.Errorf("expected no file to be written for a non-conforming review, stat err = %v", err)
+	if _, statErr := os.Stat(statePath); !os.IsNotExist(statErr) {
+		t.Errorf("expected no file to be written for a non-conforming review, stat err = %v", statErr)
+	}
+}
+
+// a file written by an incompatible (newer) version still loads — it is not
+// force-validated against this version's schema, which the `version` literal
+// alone would fail — and is classified mismatched so the caller can flag it for
+// migration.
+func TestLoadMismatchedVersionStillLoads(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	future := `{
+  "version": "2.0.0",
+  "id": "rev1",
+  "repo_path": "/repo",
+  "source_branch": "feature",
+  "target_branch": "main",
+  "files": [],
+  "marked_files": []
+}`
+	if err := os.WriteFile(statePath, []byte(future), 0o644); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+
+	loaded, err := LoadReview(statePath)
+	if err != nil {
+		t.Fatalf("expected a mismatched-version file to load without force-validation: %v", err)
+	}
+	if loaded.Version != "2.0.0" {
+		t.Errorf("expected version 2.0.0 preserved, got %q", loaded.Version)
+	}
+	if got := schema.Classify(loaded.Version); got != schema.ClassMismatched {
+		t.Errorf("expected mismatched classification, got %v", got)
 	}
 }
 
@@ -284,6 +319,9 @@ func TestLoadRejectsSchemaViolation(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid state file") {
 		t.Errorf("expected a schema error distinct from a parse error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "comments.0.status") {
+		t.Errorf("expected the error to name the offending field path, got %v", err)
 	}
 }
 

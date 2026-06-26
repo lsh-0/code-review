@@ -1,4 +1,9 @@
-## ADDED Requirements
+# statefile-validation Specification
+
+## Purpose
+Integrate the versioned CUE schema into the state file's load and save path so that what is written conforms and what is read is checked. Validation is evaluated in-process via the CUE Go library, with no dependency on an external `cue` CLI at runtime. On save, a non-conforming review is refused; on load, a non-conforming file fails with an actionable error that distinguishes a schema-shape failure from a parse failure. On load the file's `version` is also read and classified against the build's schema version (unversioned, current, or mismatched) so files needing migration can be flagged — detection only, no migration is performed.
+
+## Requirements
 
 ### Requirement: Validate against the embedded schema in-process
 The program SHALL validate state files against the embedded CUE schema using the CUE Go library (`cuelang.org/go`), evaluated in-process. The program SHALL NOT depend on an external `cue` CLI at runtime.
@@ -19,7 +24,7 @@ Before a state file is written, the program SHALL validate the serialized review
 - **THEN** no file is written and the save returns an error naming the failing path
 
 ### Requirement: Validate on load
-When the program loads a state file, it SHALL validate the parsed content against the schema. A file that does not conform SHALL fail to load with an actionable error that distinguishes a schema-shape failure from a parse failure.
+When the program loads a state file, it SHALL validate the parsed content against the schema. A file that does not conform SHALL fail to load with an actionable error that distinguishes a schema-shape failure from a parse failure. A JSON type mismatch is a parse failure, rejected during decoding; a value that decodes but violates a constraint (a bad `status`, an empty `id`, a non-matching `version`) is a schema failure whose error names the offending field path.
 
 #### Scenario: Conforming file loads
 - **WHEN** a state file that conforms to the schema is loaded
