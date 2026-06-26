@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"code-review/model"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -198,6 +199,31 @@ func TestStatusCounts(t *testing.T) {
 	}
 }
 
+// every read command's stdout must be valid JSON, per the JSON output contract.
+func TestReadCommandsEmitValidJSON(t *testing.T) {
+	ctx := fixtureContext(t, fixtureReview())
+
+	tests := []struct {
+		name string
+		run  func(*reviewContext, io.Writer, []string) error
+		args []string
+	}{
+		{"list", cmdList, nil},
+		{"show", cmdShow, []string{"c-active"}},
+		{"status", cmdStatus, nil},
+	}
+
+	for _, test := range tests {
+		var out bytes.Buffer
+		if err := test.run(ctx, &out, test.args); err != nil {
+			t.Fatalf("%s: %v", test.name, err)
+		}
+		if !json.Valid(out.Bytes()) {
+			t.Errorf("%s output is not valid JSON: %q", test.name, out.String())
+		}
+	}
+}
+
 func TestResolveAndReactivate(t *testing.T) {
 	ctx := fixtureContext(t, fixtureReview())
 
@@ -334,7 +360,7 @@ func TestUnmarkUnmarkedFileIsNoOp(t *testing.T) {
 
 func TestInstructionsPrintsContract(t *testing.T) {
 	var out bytes.Buffer
-	if err := cmdInstructions(nil, &out, nil); err != nil {
+	if err := cmdInstructions(&out, nil); err != nil {
 		t.Fatalf("cmdInstructions: %v", err)
 	}
 	if !strings.Contains(out.String(), "code-review list") {
@@ -352,13 +378,56 @@ func TestUnknownCommandExitsTwo(t *testing.T) {
 	}
 }
 
+// an unrecognised flag on a subcommand is a parse error and exits 2, the same
+// code as an unknown command — POSIX-style per-command flag parsing.
+func TestUnknownSubcommandFlagExitsTwo(t *testing.T) {
+	var out, errOut bytes.Buffer
+	// `instructions` needs no repository, so this isolates flag parsing.
+	if code := runCLI([]string{"instructions", "--nope"}, &out, &errOut); code != 2 {
+		t.Errorf("unknown subcommand flag exit code = %d, expected 2", code)
+	}
+}
+
+// a `--` terminator stops flag parsing, so a following flag-looking token is
+// handed to the command as a positional argument rather than rejected.
+func TestFlagTerminatorPassesPositional(t *testing.T) {
+	dir := initGitRepo(t)
+	// seed a review whose one comment's id begins with dashes, so addressing it
+	// requires the token to survive flag parsing as a positional.
+	branch, _ := GetCurrentBranch(dir)
+	def, _ := GetDefaultBranch(dir)
+	xdg := filepath.Join(dir, "xdg", "code-review")
+	if err := os.MkdirAll(xdg, 0o755); err != nil {
+		t.Fatalf("mkdir xdg: %v", err)
+	}
+	review := model.NewReview(dir, branch, def)
+	file := review.AddFileDiff("a.go")
+	seed := model.NewCommentWithContext("note", 1, "Reviewer", "blob", []string{"package a"}, 0)
+	seed.ID = "--dashid"
+	file.Comments = []*model.Comment{seed}
+	if err := SaveReview(GetReviewStatePath(xdg, dir, branch, def), review); err != nil {
+		t.Fatalf("seed review: %v", err)
+	}
+
+	// without the terminator, pflag treats `--dashid` as an unknown flag (exit 2).
+	if code, _, _ := runCLIInDir(t, dir, "resolve", "--dashid"); code != 2 {
+		t.Errorf("expected a dashed token to be parsed as a flag without `--`, got code %d", code)
+	}
+
+	// with the terminator, it reaches the handler as the comment id and resolves.
+	code, _, errOut := runCLIInDir(t, dir, "resolve", "--", "--dashid")
+	if code != 0 {
+		t.Fatalf("resolve with terminator failed: code %d, %s", code, errOut)
+	}
+}
+
 func TestHelpListsCommands(t *testing.T) {
 	for _, given := range []string{"-h", "--help"} {
 		var out bytes.Buffer
 		if code := runCLI([]string{given}, &out, &bytes.Buffer{}); code != 0 {
 			t.Errorf("%s exit code = %d, expected 0", given, code)
 		}
-		for _, name := range []string{"list", "resolve", "instructions"} {
+		for _, name := range []string{"start", "list", "resolve", "instructions"} {
 			if !strings.Contains(out.String(), name) {
 				t.Errorf("%s usage omits command %q", given, name)
 			}
@@ -445,6 +514,71 @@ func TestResolveReviewErrors(t *testing.T) {
 			t.Errorf("expected a 'no review found' message, got %q", errOut)
 		}
 	})
+}
+
+func TestStartCreatesReview(t *testing.T) {
+	dir := initGitRepo(t)
+
+	// no review before; list errors.
+	if code, _, _ := runCLIInDir(t, dir, "list"); code != 1 {
+		t.Fatalf("expected list to fail before start, got code %d", code)
+	}
+
+	code, out, errOut := runCLIInDir(t, dir, "start")
+	if code != 0 {
+		t.Fatalf("start failed: code %d, %s", code, errOut)
+	}
+	if !strings.Contains(out, "started review") {
+		t.Errorf("expected a 'started review' message, got %q", out)
+	}
+
+	// the review now exists and list succeeds with an empty array.
+	code, listOut, errOut := runCLIInDir(t, dir, "list")
+	if code != 0 {
+		t.Fatalf("list after start failed: code %d, %s", code, errOut)
+	}
+	if got := strings.TrimSpace(listOut); got != "[]" {
+		t.Errorf("expected an empty review, got %q", got)
+	}
+}
+
+func TestStartIsIdempotentAndDoesNotOverwrite(t *testing.T) {
+	dir := initGitRepo(t)
+
+	if code, _, errOut := runCLIInDir(t, dir, "start"); code != 0 {
+		t.Fatalf("first start failed: code %d, %s", code, errOut)
+	}
+	// seed a comment so an overwrite would be detectable.
+	if code, _, errOut := runCLIInDir(t, dir, "comment", "a note"); code != 0 {
+		t.Fatalf("seeding comment failed: code %d, %s", code, errOut)
+	}
+
+	code, out, _ := runCLIInDir(t, dir, "start")
+	if code != 0 {
+		t.Fatalf("second start failed: code %d", code)
+	}
+	if !strings.Contains(out, "already exists") {
+		t.Errorf("expected an 'already exists' message, got %q", out)
+	}
+
+	// the seeded comment survived the second start.
+	code, statusOut, _ := runCLIInDir(t, dir, "status")
+	if code != 0 {
+		t.Fatalf("status failed: code %d", code)
+	}
+	if !strings.Contains(statusOut, `"active": 1`) {
+		t.Errorf("second start overwrote the review: %q", statusOut)
+	}
+}
+
+func TestStartOutsideRepoErrors(t *testing.T) {
+	code, _, errOut := runCLIInDir(t, t.TempDir(), "start")
+	if code != 1 {
+		t.Errorf("exit code = %d, expected 1", code)
+	}
+	if !strings.Contains(errOut, "not a git repository") {
+		t.Errorf("expected a 'not a git repository' message, got %q", errOut)
+	}
 }
 
 // a mutating command must write only the state file and leave the repository

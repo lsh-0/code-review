@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A command-line interface for AI agents to act on a review, so they no longer hand-edit the review state file
+  - Read commands list active comments, show a comment's thread, and summarise the review, all as JSON
+  - Agents resolve, reactivate, reply to and add comments, and unmark files they change, through safe commands
+  - `code-review start` begins a review for the current branch; `code-review instructions` prints the agent guide
+  - The CLI only ever reads the repository and writes the review state; it never changes branches or your code
 - Comments now follow their code when a file changes during review, instead of silently sliding onto unrelated lines
   - A comment whose line moves re-anchors to its new position on refresh, and recovers if the change is later reverted
   - When its code is gone, the comment is marked outdated and shown on its own with a warning border until you delete it
@@ -17,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The "copy AI prompt" button and the state file now point agents at `code-review instructions` for the full guide
 - The frontend has been rewritten in TypeScript, replacing the Go-to-JavaScript (GopherJS) implementation
   - The tool looks and behaves the same, but the shipped frontend is far smaller and the code is now testable on its own
   - Building from source now needs [Deno](https://deno.com) instead of GopherJS and a pinned Go 1.19 (build-time only)

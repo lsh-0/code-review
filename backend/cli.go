@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -287,8 +288,38 @@ func cmdUnmark(ctx *reviewContext, out io.Writer, args []string) error {
 
 // instructions — print the embedded agent contract verbatim. Read-only and does
 // not resolve a review, so it works outside a repository.
-func cmdInstructions(_ *reviewContext, out io.Writer, args []string) error {
+func cmdInstructions(out io.Writer, args []string) error {
 	_, err := fmt.Fprint(out, instructionsText)
+	return err
+}
+
+// start — create the review state file for the current directory and branch if
+// it does not already exist. This is the only command that creates a review;
+// every other command requires one to already exist. It writes only the state
+// file (read-only on the repository) and is a no-op report if a review is
+// already present, never overwriting existing feedback. The state seeded here is
+// empty: it carries no diff or file list yet.
+func cmdStart(target *reviewTarget, out io.Writer, args []string) error {
+	if err := requireArgs("start", args, 0, ""); err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(target.statePath); err == nil {
+		_, err := fmt.Fprintf(out, "review already exists for branch %q at %s\n", target.sourceBranch, target.statePath)
+		return err
+	}
+
+	// ensure the data directory exists before the first write, as the GUI does
+	// in startup; `SaveReview` opens the file but does not create its parent.
+	if err := os.MkdirAll(filepath.Dir(target.statePath), 0o755); err != nil {
+		return fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	review := model.NewReview(target.repoPath, target.sourceBranch, target.defaultBranch)
+	if err := SaveReview(target.statePath, review); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(out, "started review for %q against %q at %s\n", target.sourceBranch, target.defaultBranch, target.statePath)
 	return err
 }
 
@@ -302,35 +333,64 @@ func saveReview(ctx *reviewContext, out io.Writer, message string) error {
 	return err
 }
 
-// command is one CLI subcommand: its handler, a one-line usage summary for the
-// help listing, and whether it needs a resolved review. `instructions` does not
-// (so it runs outside a repo); every other command does.
+// the resolution a command requires before it runs. `instructions` needs
+// nothing (it works outside a repository); `start` needs the review target (the
+// repo/branch derivation) so it can create the state file; every other command
+// needs a loaded review.
+type needs int
+
+const (
+	needsNothing needs = iota
+	needsTarget
+	needsReview
+)
+
+// command is one CLI subcommand: its handlers (only one of which is set,
+// matching `needs`), a one-line usage summary for the help listing, and the
+// resolution it requires. The split-typed handlers keep each command's signature
+// honest about what it receives rather than passing a half-built context.
 type command struct {
-	run         func(ctx *reviewContext, out io.Writer, args []string) error
-	summary     string
-	needsReview bool
+	needs         needs
+	summary       string
+	runReview     func(ctx *reviewContext, out io.Writer, args []string) error
+	runTarget     func(target *reviewTarget, out io.Writer, args []string) error
+	runStandalone func(out io.Writer, args []string) error
 }
 
 // the CLI command table — the single definition of the command set, used both
 // to dispatch and to build the help listing.
 var commands = map[string]command{
-	"list":         {cmdList, "list the active comments needing attention", true},
-	"show":         {cmdShow, "show <id> — one comment with its reply thread", true},
-	"status":       {cmdStatus, "summarise the review (branches, counts, marks)", true},
-	"resolve":      {cmdResolve, "resolve <id> — mark a comment addressed", true},
-	"reactivate":   {cmdReactivate, "reactivate <id> — set a resolved comment active", true},
-	"reply":        {cmdReply, "reply <id> <text> — reply to a comment", true},
-	"comment":      {cmdComment, "comment <text> — add a review-level comment", true},
-	"unmark":       {cmdUnmark, "unmark <file> — drop a file's reviewed mark", true},
-	"instructions": {cmdInstructions, "print the agent contract", false},
+	"start":        {needs: needsTarget, summary: "create the review for the current branch", runTarget: cmdStart},
+	"list":         {needs: needsReview, summary: "list the active comments needing attention", runReview: cmdList},
+	"show":         {needs: needsReview, summary: "show <id> — one comment with its reply thread", runReview: cmdShow},
+	"status":       {needs: needsReview, summary: "summarise the review (branches, counts, marks)", runReview: cmdStatus},
+	"resolve":      {needs: needsReview, summary: "resolve <id> — mark a comment addressed", runReview: cmdResolve},
+	"reactivate":   {needs: needsReview, summary: "reactivate <id> — set a resolved comment active", runReview: cmdReactivate},
+	"reply":        {needs: needsReview, summary: "reply <id> <text> — reply to a comment", runReview: cmdReply},
+	"comment":      {needs: needsReview, summary: "comment <text> — add a review-level comment", runReview: cmdComment},
+	"unmark":       {needs: needsReview, summary: "unmark <file> — drop a file's reviewed mark", runReview: cmdUnmark},
+	"instructions": {needs: needsNothing, summary: "print the agent contract", runStandalone: cmdInstructions},
 }
 
-// resolve the review for the current directory and branch, mirroring the GUI's
-// startup derivation: git root, current and default branch, the XDG data dir,
-// and the resulting state path, then load it. Performs read-only git operations
-// only and never creates a missing review. Returns a clear error when there is
-// no repository, or no review for the current branch.
-func resolveReview() (*reviewContext, error) {
+// reviewTarget identifies the review for the current directory and branch
+// without loading it: the repository, the source and default (target) branches,
+// the git user, and the state path the review lives at. It is the common
+// derivation shared by `start` (which may create the file) and `resolveReview`
+// (which requires it to exist).
+type reviewTarget struct {
+	repoPath      string
+	sourceBranch  string
+	defaultBranch string
+	userName      string
+	statePath     string
+}
+
+// derive the review target for the current directory and branch, mirroring the
+// GUI's startup derivation: git root, current and default branch, the XDG data
+// dir, and the resulting state path. Performs read-only git operations only and
+// does not touch the state file. Returns a clear error when there is no
+// repository.
+func resolveTarget() (*reviewTarget, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current directory: %w", err)
@@ -346,7 +406,7 @@ func resolveReview() (*reviewContext, error) {
 		return nil, fmt.Errorf("failed to get git user name: %w", err)
 	}
 
-	currentBranch, err := GetCurrentBranch(repoPath)
+	sourceBranch, err := GetCurrentBranch(repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current branch: %w", err)
 	}
@@ -356,17 +416,36 @@ func resolveReview() (*reviewContext, error) {
 		return nil, fmt.Errorf("failed to get default branch: %w", err)
 	}
 
-	statePath := GetReviewStatePath(GetXDGDataDir(), repoPath, currentBranch, defaultBranch)
-	if _, err := os.Stat(statePath); err != nil {
-		return nil, fmt.Errorf("no review found for branch %q (open the GUI on this branch to start one)", currentBranch)
+	statePath := GetReviewStatePath(GetXDGDataDir(), repoPath, sourceBranch, defaultBranch)
+	return &reviewTarget{
+		repoPath:      repoPath,
+		sourceBranch:  sourceBranch,
+		defaultBranch: defaultBranch,
+		userName:      userName,
+		statePath:     statePath,
+	}, nil
+}
+
+// resolve and load the review for the current directory and branch. Builds the
+// target, requires the state file to exist (never creating it), and loads it.
+// Returns a clear error when there is no repository, or no review for the
+// current branch.
+func resolveReview() (*reviewContext, error) {
+	target, err := resolveTarget()
+	if err != nil {
+		return nil, err
 	}
 
-	review, err := LoadReview(statePath)
+	if _, err := os.Stat(target.statePath); err != nil {
+		return nil, fmt.Errorf("no review found for branch %q (run `code-review start` to begin one)", target.sourceBranch)
+	}
+
+	review, err := LoadReview(target.statePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load review: %w", err)
 	}
 
-	return &reviewContext{review: review, statePath: statePath, userName: userName}, nil
+	return &reviewContext{review: review, statePath: target.statePath, userName: target.userName}, nil
 }
 
 // the sorted command names, for a stable help listing.
@@ -415,18 +494,30 @@ func runCLI(args []string, out io.Writer, errOut io.Writer) int {
 		return 2
 	}
 
-	var ctx *reviewContext
-	if cmd.needsReview {
-		resolved, err := resolveReview()
+	// dispatch by the resolution each command needs, passing it exactly the
+	// context its handler expects.
+	var runErr error
+	switch cmd.needs {
+	case needsNothing:
+		runErr = cmd.runStandalone(out, flags.Args())
+	case needsTarget:
+		target, err := resolveTarget()
 		if err != nil {
 			fmt.Fprintf(errOut, "%v\n", err)
 			return 1
 		}
-		ctx = resolved
+		runErr = cmd.runTarget(target, out, flags.Args())
+	case needsReview:
+		ctx, err := resolveReview()
+		if err != nil {
+			fmt.Fprintf(errOut, "%v\n", err)
+			return 1
+		}
+		runErr = cmd.runReview(ctx, out, flags.Args())
 	}
 
-	if err := cmd.run(ctx, out, flags.Args()); err != nil {
-		fmt.Fprintf(errOut, "%v\n", err)
+	if runErr != nil {
+		fmt.Fprintf(errOut, "%v\n", runErr)
 		return 1
 	}
 	return 0

@@ -47,6 +47,7 @@ branch, and default branch) and writes only the review state, never the repo.
 
     code-review --help          # list the commands
     code-review instructions    # the agent contract: how to use the CLI and review
+    code-review start           # create the review for the current branch
     code-review list            # the active comments needing attention (JSON)
     code-review show <id>       # one comment with its reply thread
     code-review status          # summary: branches, comment counts, marked files
