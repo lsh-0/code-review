@@ -247,3 +247,9 @@ effort: low
 tags: frontend, ui
 summary: Ctrl-scroll inside the file list pane changes the zoom/size of the diff pane; it should be contained or do nothing there
 ---
+title: Run the controls horizontally across the top instead of stacked above the file list
+added: 2026-06-24
+effort: medium
+tags: frontend, ui
+summary: Redesign the controls to sit in a horizontal bar across the top of the window rather than stacked vertically on top of the file list column
+---

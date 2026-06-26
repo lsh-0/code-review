@@ -12,9 +12,9 @@ import (
 )
 
 func SaveReview(path string, review *model.Review) error {
-	// stamp the current readme so existing state files pick it up and the
-	// text stays current if it is revised.
-	review.Readme = statefileUsage
+	// stamp the readme pointer so existing state files pick it up; the full
+	// agent contract lives in the `instructions` command, not the file.
+	review.Readme = readmePointer
 
 	data, err := json.MarshalIndent(review, "", "  ")
 	if err != nil {
