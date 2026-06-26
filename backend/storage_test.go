@@ -2,6 +2,7 @@ package main
 
 import (
 	"code-review/model"
+	"code-review/schema"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,6 +178,112 @@ func TestSaveReviewStampsEmbeddedReadme(t *testing.T) {
 
 	if !strings.Contains(loaded.Readme, "code-review state file") {
 		t.Errorf("Embedded readme.md appears empty or wrong: %q", loaded.Readme)
+	}
+}
+
+// a saved file carries the current schema version, and reloading it classifies
+// as current.
+func TestSaveStampsSchemaVersion(t *testing.T) {
+	review := model.NewReview("/repo", "feature", "main")
+	statePath := filepath.Join(t.TempDir(), "state.json")
+
+	if err := SaveReview(statePath, review); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(data), `"version": "`+schema.Version+`"`) {
+		t.Errorf("expected written file to carry version %q, file was:\n%s", schema.Version, data)
+	}
+
+	loaded, err := LoadReview(statePath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if loaded.Version != schema.Version {
+		t.Errorf("expected loaded version %q, got %q", schema.Version, loaded.Version)
+	}
+	if got := schema.Classify(loaded.Version); got != schema.ClassCurrent {
+		t.Errorf("expected a freshly saved file to classify as current, got %v", got)
+	}
+}
+
+// a review that does not conform to the schema is neither written nor leaves a
+// partial file behind.
+func TestSaveRejectsNonConformingReview(t *testing.T) {
+	review := model.NewReview("/repo", "feature", "main")
+	diff := review.AddFileDiff("a.go")
+	comment := diff.AddComment("note", 3, "Test User")
+	comment.Status = "bogus" // not a valid CommentStatus
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	if err := SaveReview(statePath, review); err == nil {
+		t.Fatal("expected SaveReview to reject a non-conforming review")
+	}
+
+	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
+		t.Errorf("expected no file to be written for a non-conforming review, stat err = %v", err)
+	}
+}
+
+// a conforming state file with no `version` (written before versioning
+// existed) loads and is classified as unversioned (pre-1.0.0).
+func TestLoadUnversionedFileClassifiesPre100(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	unversioned := `{
+  "id": "rev-legacy",
+  "repo_path": "/repo",
+  "source_branch": "feature",
+  "target_branch": "main",
+  "files": [],
+  "marked_files": []
+}`
+	if err := os.WriteFile(statePath, []byte(unversioned), 0o644); err != nil {
+		t.Fatalf("write unversioned state: %v", err)
+	}
+
+	loaded, err := LoadReview(statePath)
+	if err != nil {
+		t.Fatalf("expected an unversioned file to load: %v", err)
+	}
+	if loaded.Version != "" {
+		t.Errorf("expected no version on an unversioned file, got %q", loaded.Version)
+	}
+	if got := schema.Classify(loaded.Version); got != schema.ClassUnversioned {
+		t.Errorf("expected unversioned classification, got %v", got)
+	}
+}
+
+// a file that parses as JSON but violates the schema fails to load, with an
+// error distinct from a parse failure.
+func TestLoadRejectsSchemaViolation(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	// parses fine (status is a string), but "bogus" is not a valid status.
+	bad := `{
+  "id": "rev1",
+  "repo_path": "/repo",
+  "source_branch": "feature",
+  "target_branch": "main",
+  "files": [
+    {"file_path": "a.go", "comments": [
+      {"id": "c1", "author": "u", "content": "x", "status": "bogus"}
+    ]}
+  ],
+  "marked_files": []
+}`
+	if err := os.WriteFile(statePath, []byte(bad), 0o644); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+
+	_, err := LoadReview(statePath)
+	if err == nil {
+		t.Fatal("expected a schema-violating file to fail loading")
+	}
+	if !strings.Contains(err.Error(), "invalid state file") {
+		t.Errorf("expected a schema error distinct from a parse error, got %v", err)
 	}
 }
 

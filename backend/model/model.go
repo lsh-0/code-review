@@ -60,7 +60,12 @@ type FileDiff struct {
 }
 
 type Review struct {
-	Readme       string      `json:"_readme"`
+	Readme string `json:"_readme"`
+	// Version is the SchemaVer schema version the file was written under. It is
+	// stamped on save and read on load to classify a file (current, or an older
+	// version needing migration). Optional: a file written before versioning
+	// existed carries no `version`, which denotes pre-1.0.0.
+	Version      string      `json:"version,omitempty"`
 	ID           string      `json:"id"`
 	RepoPath     string      `json:"repo_path"`
 	SourceBranch string      `json:"source_branch"`

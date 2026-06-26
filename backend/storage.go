@@ -2,6 +2,7 @@ package main
 
 import (
 	"code-review/model"
+	"code-review/schema"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -15,6 +16,15 @@ func SaveReview(path string, review *model.Review) error {
 	// stamp the current readme so existing state files pick it up and the
 	// text stays current if it is revised.
 	review.Readme = statefileUsage
+	// stamp the schema version this file is written under, so a later load can
+	// classify it (current, or an older version needing migration).
+	review.Version = schema.Version
+
+	// refuse to write a file that would not load back: validate before any
+	// bytes hit disk.
+	if err := schema.Validate(review); err != nil {
+		return fmt.Errorf("refusing to write invalid state file: %w", err)
+	}
 
 	data, err := json.MarshalIndent(review, "", "  ")
 	if err != nil {
@@ -36,7 +46,18 @@ func LoadReview(path string) (*model.Review, error) {
 
 	var review model.Review
 	if err := json.Unmarshal(data, &review); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal review: %w", err)
+		return nil, fmt.Errorf("failed to parse review file: %w", err)
+	}
+
+	// A file written by an incompatible version is reported as needing
+	// migration; it is not force-validated against this version's schema, which
+	// would only yield a misleading shape error. The caller derives the class
+	// from `review.Version` (schema.Classify) to surface it. Unversioned and
+	// current files are validated against the current schema.
+	if schema.Classify(review.Version) != schema.ClassMismatched {
+		if err := schema.Validate(&review); err != nil {
+			return nil, fmt.Errorf("invalid state file: %w", err)
+		}
 	}
 
 	return &review, nil

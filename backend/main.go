@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"code-review/assets"
+	"code-review/schema"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -101,6 +102,11 @@ func (a *App) startup(ctx context.Context) error {
 		a.review, err = LoadReview(a.statePath)
 		if err != nil {
 			return fmt.Errorf("failed to load existing review: %w", err)
+		}
+		// flag a file that is not on the current schema version so a stale
+		// state file is visible; migration itself is a later change.
+		if class := schema.Classify(a.review.Version); class != schema.ClassCurrent {
+			fmt.Printf("state file schema: %s (current is %s)\n", class, schema.Version)
 		}
 	} else {
 		a.review = model.NewReview(a.repoPath, currentBranch, defaultBranch)
