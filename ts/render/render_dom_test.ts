@@ -304,5 +304,6 @@ Deno.test("diff: a binary file renders a placeholder, no lines", () => {
 
   const placeholder = doc.querySelector("#diff-content .binary-placeholder");
   assert(placeholder);
+  assertEquals(placeholder.textContent, "binary file, cannot diff");
   assertEquals(doc.querySelectorAll("#diff-content .diff-line").length, 0);
 });

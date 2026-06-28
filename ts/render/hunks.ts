@@ -55,7 +55,10 @@ export function renderFileHunks(
 
   if (file.Binary) {
     parent.appendChild(
-      el("div", { classes: ["binary-placeholder"], text: "binary file" }),
+      el("div", {
+        classes: ["binary-placeholder"],
+        text: "binary file, cannot diff",
+      }),
     );
     return;
   }
