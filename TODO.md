@@ -41,18 +41,6 @@ Work uses AI code review; the feedback is good but the platforms make
 it awkward to address. Importing it here allows a better conversation
 and thorough resolution using local tools.
 ---
-title: Investigate syntax highlighting for diff code
-added: 2026-06-12
-updated: 2026-06-13
-effort: medium
-tags: frontend, ui
-summary: Break up blocks of code with syntax highlighting for readability
-
-Recommended options: Chroma (Go library) or Highlight.js (JavaScript).
-A naive regex highlighter was tried but raised escaping and correctness
-concerns, so a real library is likely the better path. Chroma already
-appears in the module graph (go.work.sum), which de-risks choosing it.
----
 title: Publish an AppImage and investigate ARM builds
 added: 2026-06-13
 effort: medium
@@ -72,18 +60,6 @@ summary: No context menu on right-click; selecting lines and right-clicking offe
 Right-clicking a selection in the diff offers nothing. A context menu
 with at least a copy action is the motivating case.
 ---
-title: Add a code-review CLI for agents instead of hand-editing JSON
-added: 2026-06-14
-updated: 2026-06-16
-effort: high
-tags: backend, model, automation
-summary: A `code-review` CLI offering direct actions (resolve, reply, unmark) would be cleaner and less error-prone than an agent editing the state JSON by hand
-
-The instruction prose on the agent's interaction with the state (when to
-reply, when to unmark, working unsupervised) was sharpened in
-`statefile-usage.md`. The remaining piece is the CLI: direct actions
-would be less error-prone than hand-editing the JSON.
----
 title: Move file selection with up/down arrow keys
 added: 2026-06-14
 effort: medium
@@ -95,13 +71,14 @@ selected file visible where possible.
 ---
 title: Make the scrollbar always-present and wider
 added: 2026-06-16
-effort: medium
+updated: 2026-06-29
+effort: low
 tags: frontend, ui
-summary: Investigate how much control we have over the scrollbar; want it always visible and wider, likely a WebKit styling concern
+summary: The WebKit scrollbar is now always shown via `::-webkit-scrollbar` styling in `style.css`; remaining work is widening it
 
-The scrollbar behaves differently to the GTK scrollbars, suggesting it
-is WebKit-controlled rather than the system widget. Investigate how much
-styling control WebKit exposes.
+WebKitGTK honours `::-webkit-scrollbar`, so the styling control question is
+answered and the always-visible half is done. The thumb still uses default
+sizing — only an explicit width/height bump remains.
 ---
 title: Ctrl-z undo doesn't work in the add-comment modal
 added: 2026-06-16
@@ -115,17 +92,9 @@ effort: medium
 tags: frontend, ui
 summary: Pressing Ctrl-f does nothing; it should search the page for matches and highlight them
 ---
-title: Make the file-list/diff divider draggable to resize the panes
-added: 2026-06-16
-effort: medium
-tags: frontend, ui
-summary: The divider between the file list and the diff cannot be dragged; clicking and dragging it should resize the two panes
-
-The boundary between the file-list column and the diff pane is fixed.
-Dragging it should adjust how the horizontal space is split between them.
----
 title: Hide files matching ignore patterns, with a show-hidden toggle
 added: 2026-06-16
+updated: 2026-06-29
 effort: medium
 tags: frontend, backend
 summary: Keep a list of file patterns to always hide from the review (e.g. compiled .qtpl.go), with a way to reveal which files were hidden
@@ -133,10 +102,14 @@ summary: Keep a list of file patterns to always hide from the review (e.g. compi
 Generated or compiled files (like .qtpl.go from .qtpl) are noise the
 reviewer never cares about. A configurable ignore list would hide them;
 a "show hidden" control would reveal which files were suppressed.
+
+An ad-hoc substring filter box now exists (`fileMatchesFilter` in
+`ts/core/filter.ts`), but that is a transient search, not a persistent
+ignore-pattern list. The pattern list and show-hidden toggle remain.
 ---
 title: Warn about uncommitted working-tree changes with banners
 added: 2026-06-17
-updated: 2026-06-18
+updated: 2026-06-29
 effort: medium
 tags: frontend, backend, ui
 summary: A full-width info banner counting modified/deleted tracked files, plus a per-file warning banner (with a link to open the file in the reviewer's diff tool) when the viewed file has local changes not reflected in the diff
@@ -149,11 +122,12 @@ changes") with an inline link to open it in the reviewer's configured
 diff tool — via `git difftool` (honours their `diff.tool`, e.g. meld),
 since `xdg-open` opens a single file and cannot diff.
 
-Backend groundwork done: `GetWorkingTreeStatus` (`backend/gitquery.go`)
-returns tracked modified/deleted files (untracked excluded) and is bound
-to the frontend. The external-change banner added since (show/hide plus
-CSS) is now a reusable banner pattern to copy. Remaining: render the two
-banners and wire the difftool link.
+Backend groundwork still in place and now wired through to the frontend:
+`GetWorkingTreeStatus` (`backend/gitquery.go`) is bound and exposed as
+`getWorkingTreeStatus()` in `ts/client.ts`. The reusable show/hide banner
+pattern also exists (the external-change banner in `ts/main.ts`).
+Remaining: render the two banners and wire the difftool link — none of
+the working-tree status is consumed by the UI yet.
 ---
 title: Build macOS and Windows binaries in CI and attach them to releases
 added: 2026-06-18
@@ -177,17 +151,6 @@ comment edits raise the banner but a new commit does not — the reviewer
 sees no prompt that the diff is now stale. A separate poll of the
 source-branch HEAD would close that gap and reuse the same banner.
 ---
-title: Re-anchor comments to their lines across commits
-added: 2026-06-18
-effort: high
-tags: backend, model, comments
-summary: A comment's line number is fixed at the commit it was made against; when a later commit shifts that line the comment should follow it rather than point at the wrong line
-
-A comment is correct for the commit it was left on, but a new commit that
-inserts or removes lines above it pushes the referenced line out of place.
-Comments already store surrounding-line context, which is the groundwork
-for relocating the anchor when the diff changes.
----
 title: Scale comment text with Ctrl+zoom like the diff text
 added: 2026-06-20
 effort: low
@@ -198,48 +161,18 @@ Pre-existing behaviour, unchanged by the Deno frontend rewrite; noticed
 during that rewrite's webview check. The diff lines scale via the --zoom
 custom property but the comment font sizes are fixed.
 ---
-title: Sort and group the file list, surfacing files needing attention at the top
-added: 2026-06-21
-effort: medium
-tags: frontend, ui
-summary: Bring standard sorting/filtering/grouping to the file list; first goal is to lift files unmarked by a state-file change or new commit to the top so they aren't hunted for by scrolling
-
-Over repeated review rounds the reviewer mainly wants the files that got
-unmarked (by agent edits or new commits) without scrolling to find them.
-Grouping by extension (review all SQL, or all shell, at once) is a likely
-later refinement.
----
-title: Spurious downward "expand lines" affordance below a fully-deleted file
-added: 2026-06-20
-effort: medium
-tags: frontend, ui, diff
-summary: A wholly-removed file (hunk `@@ -1,3 +0,0 @@`) shows a "↓ expand 20 lines" control below its last line, but there is nothing below to expand into
-
-Seen on `assets/go.mod` shown as deleted. The downward expand control
-should be suppressed when the hunk already reaches the end of the file,
-or when the file no longer exists on the new side.
----
 title: Empty diff pane gives no reason for renamed or binary files
 added: 2026-06-20
+updated: 2026-06-29
 effort: medium
 tags: frontend, ui, diff
-summary: Pure-rename (no content change) and binary files render a blank diff pane with no indication of why — should show "renamed, no changes" or "binary file" instead
+summary: Pure-rename (no content change) files render a blank diff pane with no indication of why — should show "renamed, no changes"
 
-A run of files rendered empty: `backend/assets/assets.go` (a rename with
-no content change) and the `.otf` fonts (binary) show nothing in the diff
-pane, while `style.css` (rename plus real edits) renders. The reviewer
-can't tell whether the file genuinely has no changes, is binary, or the
-tool failed. Each case wants its own placeholder message.
----
-title: Overview keeps an empty file section after its last comment is deleted
-added: 2026-06-23
-effort: medium
-tags: frontend, ui, overview, comments
-summary: Deleting a comment in the review overview can leave the file's header showing with no hunk beneath it; a file with no remaining feedback should drop out of the overview entirely
-
-The overview gathers files by their feedback, so once a file's last comment
-is removed it has nothing to show and should disappear rather than leave a
-stranded header.
+The binary case is now handled: `ts/render/hunks.ts` renders a "binary
+file, cannot diff" placeholder (commit `ab7f9ca`). Pure-rename files
+still render empty — the `DiffFile` type carries no `Renamed` field, so
+rename detection has to be added before a "renamed, no changes"
+placeholder can be shown.
 ---
 title: Ctrl-scrolling in the file list resizes the wrong pane via zoom
 added: 2026-06-23

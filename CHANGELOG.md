@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The tool looks and behaves the same, but the shipped frontend is far smaller and the code is now testable on its own
   - Building from source now needs [Deno](https://deno.com) instead of GopherJS and a pinned Go 1.19 (build-time only)
   - The Go code is now a single module rather than three
-- The binary-file placeholder now reads "binary file, cannot diff", explaining the empty pane rather than just labelling it
+- The binary-file placeholder now reads "binary file, cannot diff", explaining the empty pane rather than just naming it
 
 ## [0.7.1] - 2026-06-18
 
