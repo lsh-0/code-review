@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The Go code is now a single module rather than three
 - The binary-file placeholder now reads "binary file, cannot diff", explaining the empty pane rather than just naming it
 
+### Fixed
+
+- Right-clicking a diff selection in the released GUI now offers a context menu with copy, as it already did under dev
+  - A copied selection is the code text only; the gutter line numbers render via CSS and are excluded from the copy
+
 ## [0.7.1] - 2026-06-18
 
 ### Fixed

@@ -51,15 +51,6 @@ Distribution today assumes a local build. An AppImage covers x86_64
 users without a toolchain; ARM support needs investigation because of
 the GopherJS/webkit constraints.
 ---
-title: Add a right-click context menu
-added: 2026-06-13
-effort: medium
-tags: frontend, ui
-summary: No context menu on right-click; selecting lines and right-clicking offers no "copy" action
-
-Right-clicking a selection in the diff offers nothing. A context menu
-with at least a copy action is the motivating case.
----
 title: Move file selection with up/down arrow keys
 added: 2026-06-14
 effort: medium

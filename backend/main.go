@@ -653,6 +653,10 @@ func main() {
 		Title:  "Code Review",
 		Width:  1400,
 		Height: 900,
+		// Wails disables the webview's context menu in production builds (it is
+		// present only under `wails dev` and debug builds); this re-enables it so
+		// the released GUI offers the native copy/cut/paste menu over a selection.
+		EnableDefaultContextMenu: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets.Assets,
 		},
