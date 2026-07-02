@@ -4,6 +4,8 @@
 // Bundled to `assets/review.js` and loaded by `index.html`.
 
 import * as api from "./client.ts";
+import type { WorkingTreeStatus } from "./core/types.ts";
+import { isFileDirty, workingTreeBannerText } from "./core/worktree.ts";
 import { byId, el, requireId } from "./dom.ts";
 import { state } from "./render/state.ts";
 import { clampPaneWidth } from "./core/panes.ts";
@@ -42,6 +44,11 @@ import {
 const zoomMin = 0.5;
 const zoomMax = 3.0;
 const zoomStep = 0.1;
+
+// the most recently fetched working-tree status, cached so the per-file dirty
+// check on file selection reads it without a fresh git call. Refreshed on load
+// and on every full refresh; null until the first fetch succeeds.
+let workingTreeStatus: WorkingTreeStatus | null = null;
 
 // the comment actions, wired once: each opens a modal or calls a mutation
 // handler. Threaded into every comment thread the render layer builds.
@@ -103,6 +110,7 @@ async function selectFile(filePath: string): Promise<void> {
     nameEl.textContent = filePath;
   }
   renderBrowseLink(filePath);
+  renderFileDirtyBanner(filePath);
 
   await ensureFileDiff(filePath);
   await loadComments(filePath);
@@ -125,6 +133,7 @@ async function selectOverview(): Promise<void> {
     nameEl.textContent = "Review overview";
   }
   removeBrowseLink();
+  renderFileDirtyBanner("");
 
   await reloadReview();
   const { reviewComments, files } = await loadCommentedFiles();
@@ -174,6 +183,7 @@ function removeBrowseLink(): void {
 async function performFullRefresh(): Promise<void> {
   await recomputeDiff();
   await loadDiffFiles();
+  await refreshWorkingTreeStatus();
   renderFileList(fileListCallbacks);
   if (state.overviewActive) {
     const { reviewComments, files } = await loadCommentedFiles();
@@ -215,6 +225,54 @@ function applyZoom(): void {
   document.documentElement.style.setProperty("--zoom", String(state.zoomLevel));
 }
 
+// fetch the working-tree status, cache it, and render the page-wide banner.
+// Called on load and after every full refresh, since a refresh may follow a
+// new commit that changed what is dirty. A fetch failure leaves the previous
+// state and banner untouched rather than clearing a still-valid warning.
+async function refreshWorkingTreeStatus(): Promise<void> {
+  try {
+    workingTreeStatus = await api.getWorkingTreeStatus();
+  } catch {
+    return;
+  }
+  renderWorkingTreeBanner();
+  renderFileDirtyBanner(state.currentFile);
+}
+
+// render the page-wide green banner from the cached status: shown with a count
+// of modified and deleted tracked files when the tree is dirty, hidden when
+// clean.
+function renderWorkingTreeBanner(): void {
+  const banner = byId("working-tree-banner");
+  const text = byId("working-tree-banner-text");
+  if (!banner || !text || !workingTreeStatus) {
+    return;
+  }
+  const message = workingTreeBannerText(workingTreeStatus);
+  if (message === null) {
+    banner.classList.add("hidden");
+    return;
+  }
+  text.textContent = message;
+  banner.classList.remove("hidden");
+}
+
+// render the per-file orange banner for the currently viewed file: shown when
+// that file has uncommitted changes, hidden otherwise (and on the overview,
+// where `filePath` is empty). The difftool button is wired once in
+// `setupEventHandlers`; this only toggles visibility and points it at the file.
+function renderFileDirtyBanner(filePath: string): void {
+  const banner = byId("file-dirty-banner");
+  if (!banner) {
+    return;
+  }
+  if (filePath !== "" && isFileDirty(workingTreeStatus, filePath)) {
+    banner.classList.remove("hidden");
+  } else {
+    banner.classList.add("hidden");
+  }
+}
+
 function showReviewChangedBanner(): void {
   byId("review-changed-banner")?.classList.remove("hidden");
 }
@@ -239,6 +297,16 @@ function setupReviewChangedBanner(): void {
     "click",
     () => hideReviewChangedBanner(),
   );
+}
+
+// wire the live working-tree updates: the backend's `worktree:changed` event
+// fires when a tracked file changes on disk (or reverts), re-fetching the
+// status and re-rendering both banners without a manual refresh.
+function setupWorkingTreeWatcher(): void {
+  const runtime =
+    (globalThis as { runtime?: { EventsOn(ev: string, cb: () => void): void } })
+      .runtime;
+  runtime?.EventsOn("worktree:changed", () => void refreshWorkingTreeStatus());
 }
 
 // the keyboard nudge applied to the column width per arrow-key press.
@@ -387,6 +455,15 @@ function setupEventHandlers(): void {
     "click",
     () => void copyStatePrompt(),
   );
+  byId("file-dirty-difftool-btn")?.addEventListener("click", () => {
+    const filePath = state.currentFile;
+    if (filePath === "") {
+      return;
+    }
+    void api.openDiffToolForFile(filePath).catch(() =>
+      globalThis.alert(`Could not open the diff tool for ${filePath}`)
+    );
+  });
   byId("save-comment-btn")?.addEventListener("click", () => void saveComment());
   byId("cancel-comment-btn")?.addEventListener(
     "click",
@@ -468,9 +545,11 @@ async function initialize(): Promise<void> {
 
   await loadReviewInfo();
   await loadDiffFiles();
+  await refreshWorkingTreeStatus();
   renderFileList(fileListCallbacks);
   setupEventHandlers();
   setupReviewChangedBanner();
+  setupWorkingTreeWatcher();
 }
 
 // surface an initialisation failure on the page rather than failing to a blank

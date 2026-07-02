@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A filter box above the file list narrows it to files whose path matches what you type, for finding a file quickly
 - A "Group by" control can split the file list under headings; the first grouper separates unmarked files from marked
 - The divider between the file list and the diff can now be dragged to resize the two panes, by mouse or arrow keys
+- Banners now warn when the working tree has uncommitted changes the diff cannot show, updating live as files change
+  - A page-wide banner counts modified and deleted tracked files; new untracked files are ignored
+  - Viewing a changed file shows a per-file warning linking to your configured diff tool via `git difftool`
 
 ### Changed
 

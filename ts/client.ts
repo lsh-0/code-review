@@ -36,6 +36,7 @@ interface BoundApp {
   GetMarkedFiles(): Promise<string>;
   SetFileMarked(path: string, marked: boolean): Promise<void>;
   BrowseFile(path: string): Promise<void>;
+  OpenDiffToolForFile(path: string): Promise<void>;
   AddComment(
     path: string,
     content: string,
@@ -222,6 +223,9 @@ export const setFileMarked = (path: string, marked: boolean): Promise<void> =>
 
 export const browseFile = (path: string): Promise<void> =>
   callVoid("BrowseFile", (a) => a.BrowseFile(path));
+
+export const openDiffToolForFile = (path: string): Promise<void> =>
+  callVoid("OpenDiffToolForFile", (a) => a.OpenDiffToolForFile(path));
 
 export const addComment = (
   path: string,

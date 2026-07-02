@@ -123,6 +123,10 @@ func (a *App) startup(ctx context.Context) error {
 	// so the GUI can offer a refresh when the review changes underneath it.
 	go a.watchStateFile(ctx)
 
+	// watch the working tree for uncommitted changes, so the banners update the
+	// moment a tracked file changes on disk.
+	go a.watchWorkingTree(ctx)
+
 	return nil
 }
 
@@ -363,6 +367,14 @@ func (a *App) GetFileLines(filePath string, startNew int, endNew int, oldOffset 
 // review state; a failure to open is returned for the caller to report.
 func (a *App) BrowseFile(filePath string) error {
 	return OpenInPreferredApp(a.repoPath, filePath)
+}
+
+// open a file's uncommitted working-tree changes in the reviewer's configured
+// diff tool via `git difftool` (honouring their `diff.tool`, e.g. meld). The
+// path is resolved against the repository root. This does not touch review
+// state; a failure to launch the tool is returned for the caller to report.
+func (a *App) OpenDiffToolForFile(filePath string) error {
+	return OpenDiffTool(a.repoPath, filePath)
 }
 
 // a ready-to-paste prompt pointing an agent at the CLI. The full contract lives

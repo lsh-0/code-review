@@ -13,6 +13,9 @@
             <button id="banner-refresh-btn">Refresh</button>
             <button id="banner-dismiss-btn" class="banner-dismiss" title="Dismiss">×</button>
         </div>
+        <div id="working-tree-banner" class="banner banner-info hidden">
+            <span id="working-tree-banner-text"></span>
+        </div>
         <div id="main-content">
             <div id="file-list">
                 <header>
@@ -42,6 +45,10 @@
             <div id="diff-view">
                 <div id="current-file-header">
                     <h2 id="current-file-name"></h2>
+                </div>
+                <div id="file-dirty-banner" class="banner banner-warning hidden">
+                    <span>This file contains uncommitted changes not reflected in the diff.</span>
+                    <button id="file-dirty-difftool-btn" class="banner-link" type="button">Open in diff tool</button>
                 </div>
                 <div id="diff-content"></div>
             </div>

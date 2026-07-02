@@ -120,3 +120,31 @@ func GetWorkingTreeStatus(repoPath string) (WorkingTreeStatus, error) {
 
 	return status, nil
 }
+
+// report whether two working-tree statuses describe the same dirty tree: the
+// same modified set and the same deleted set (order-insensitive). The poller
+// uses this to emit `worktree:changed` only on a real transition rather than on
+// every tick. `DirtyFiles` is not compared directly: it is the derived union of
+// the two sets, so equal modified and deleted sets imply an equal union.
+func WorkingTreeStatusEqual(a, b WorkingTreeStatus) bool {
+	return sameSet(a.Modified, b.Modified) && sameSet(a.Deleted, b.Deleted)
+}
+
+// whether two path slices contain the same paths regardless of order. Git
+// reports porcelain paths in a stable order, so a plain length-and-membership
+// check suffices without sorting.
+func sameSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]bool, len(a))
+	for _, p := range a {
+		seen[p] = true
+	}
+	for _, p := range b {
+		if !seen[p] {
+			return false
+		}
+	}
+	return true
+}

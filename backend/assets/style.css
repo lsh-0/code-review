@@ -213,22 +213,12 @@ header {
 }
 
 /* a full-width notice pinned above the panes, shown when the review's state
-   file is changed by another process. It sits in normal flow so the panes
-   shrink to make room rather than being covered. */
+   file is changed by another process. Layout and hiding come from the shared
+   `.banner` rules below; this only sets its amber tint. */
 #review-changed-banner {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 1rem;
     background: #fff3cd;
     color: #7a5c00;
-    border-bottom: 1px solid #e0c46c;
-    font-size: 0.9rem;
-}
-
-#review-changed-banner.hidden {
-    display: none;
+    border-bottom-color: #e0c46c;
 }
 
 #banner-refresh-btn {
@@ -254,6 +244,56 @@ header {
     line-height: 1;
     cursor: pointer;
     padding: 0 0.3rem;
+}
+
+/* shared banner box, used by the working-tree (page-wide) and per-file
+   notices. It sits in normal flow like the review-changed banner, so the
+   panes shrink to make room rather than being covered. The colour variants
+   below tint it; the base only handles layout and hiding. */
+.banner {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid transparent;
+    font-size: 0.9rem;
+}
+
+.banner.hidden {
+    display: none;
+}
+
+/* green: a friendly, non-blocking notice that the working tree has
+   uncommitted changes the reviewed diff does not include. */
+.banner-info {
+    background: #e3f4e1;
+    color: #1f5c2e;
+    border-bottom-color: #b6dcb0;
+}
+
+/* orange: a per-file warning that the file on disk differs from what the
+   diff shows, with a link to open it in the configured diff tool. */
+.banner-warning {
+    background: #fdeccd;
+    color: #8a4b00;
+    border-bottom-color: #f0c987;
+}
+
+/* an inline text-button link inside a banner (e.g. "Open in diff tool"). It
+   reads as a link rather than a chunky button so it sits within the sentence. */
+.banner-link {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+}
+
+.banner-link:hover {
+    text-decoration: none;
 }
 
 #main-content {

@@ -84,6 +84,71 @@ func TestGetWorkingTreeStatus_CleanTree(t *testing.T) {
 	}
 }
 
+// build a status from modified/deleted lists, deriving DirtyFiles as the
+// backend does (the union of both).
+func makeStatus(modified, deleted []string) WorkingTreeStatus {
+	dirty := map[string]bool{}
+	for _, p := range append(append([]string{}, modified...), deleted...) {
+		dirty[p] = true
+	}
+	return WorkingTreeStatus{Modified: modified, Deleted: deleted, DirtyFiles: dirty}
+}
+
+func TestWorkingTreeStatusEqual(t *testing.T) {
+	cases := []struct {
+		name     string
+		a        WorkingTreeStatus
+		b        WorkingTreeStatus
+		expected bool
+	}{
+		{
+			name:     "identical statuses are equal",
+			a:        makeStatus([]string{"a.go", "b.go"}, []string{"c.go"}),
+			b:        makeStatus([]string{"a.go", "b.go"}, []string{"c.go"}),
+			expected: true,
+		},
+		{
+			name:     "order does not matter",
+			a:        makeStatus([]string{"a.go", "b.go"}, []string{"c.go"}),
+			b:        makeStatus([]string{"b.go", "a.go"}, []string{"c.go"}),
+			expected: true,
+		},
+		{
+			name:     "two clean trees are equal",
+			a:        makeStatus([]string{}, []string{}),
+			b:        makeStatus([]string{}, []string{}),
+			expected: true,
+		},
+		{
+			name:     "a differing modified set is not equal",
+			a:        makeStatus([]string{"a.go"}, []string{}),
+			b:        makeStatus([]string{"a.go", "b.go"}, []string{}),
+			expected: false,
+		},
+		{
+			name:     "a differing deleted set is not equal",
+			a:        makeStatus([]string{"a.go"}, []string{"c.go"}),
+			b:        makeStatus([]string{"a.go"}, []string{"d.go"}),
+			expected: false,
+		},
+		{
+			name:     "the same path modified vs deleted is not equal",
+			a:        makeStatus([]string{"a.go"}, []string{}),
+			b:        makeStatus([]string{}, []string{"a.go"}),
+			expected: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := WorkingTreeStatusEqual(tc.a, tc.b)
+			if actual != tc.expected {
+				t.Errorf("WorkingTreeStatusEqual = %v, expected %v", actual, tc.expected)
+			}
+		})
+	}
+}
+
 func TestBlobSHAs(t *testing.T) {
 	tmpDir := setupTestRepo(t)
 	branch, err := GetCurrentBranch(tmpDir)

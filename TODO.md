@@ -98,28 +98,6 @@ An ad-hoc substring filter box now exists (`fileMatchesFilter` in
 `ts/core/filter.ts`), but that is a transient search, not a persistent
 ignore-pattern list. The pattern list and show-hidden toggle remain.
 ---
-title: Warn about uncommitted working-tree changes with banners
-added: 2026-06-17
-updated: 2026-06-29
-effort: medium
-tags: frontend, backend, ui
-summary: A full-width info banner counting modified/deleted tracked files, plus a per-file warning banner (with a link to open the file in the reviewer's diff tool) when the viewed file has local changes not reflected in the diff
-
-Tracked files that changed or were deleted should trigger a friendly
-green page-wide banner ("uncommitted changes detected: N modified, N
-deleted"); new untracked files are ignored. Viewing a file with local
-changes also shows an orange per-file banner ("file contains uncommitted
-changes") with an inline link to open it in the reviewer's configured
-diff tool — via `git difftool` (honours their `diff.tool`, e.g. meld),
-since `xdg-open` opens a single file and cannot diff.
-
-Backend groundwork still in place and now wired through to the frontend:
-`GetWorkingTreeStatus` (`backend/gitquery.go`) is bound and exposed as
-`getWorkingTreeStatus()` in `ts/client.ts`. The reusable show/hide banner
-pattern also exists (the external-change banner in `ts/main.ts`).
-Remaining: render the two banners and wire the difftool link — none of
-the working-tree status is consumed by the UI yet.
----
 title: Build macOS and Windows binaries in CI and attach them to releases
 added: 2026-06-18
 effort: high

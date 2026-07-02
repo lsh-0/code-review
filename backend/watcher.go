@@ -18,6 +18,11 @@ const watchInterval = 500 * time.Millisecond
 // in quick succession) into one notification.
 const watchDebounce = 200 * time.Millisecond
 
+// how often the working tree is polled for uncommitted changes. As with the
+// state-file poll, a poll (rather than fsnotify) keeps the watcher
+// dependency-free; here it re-runs one cheap `git status --porcelain` per tick.
+const worktreeWatchInterval = 1000 * time.Millisecond
+
 // poll the state file for modifications by a writer other than this GUI. On a
 // genuine external change the review state is reloaded and a `review:changed`
 // event is emitted so the frontend can offer a refresh; the GUI's own writes,
@@ -44,6 +49,43 @@ func (a *App) watchStateFile(ctx context.Context) {
 					a.markSaved()
 					runtime.EventsEmit(a.ctx, "review:changed")
 				})
+			}
+		}
+	}
+}
+
+// poll the working tree for uncommitted changes so the banners appear the
+// moment a tracked file changes on disk, without the reviewer triggering a
+// refresh. Each tick re-runs `GetWorkingTreeStatus` and, when the reported
+// status differs from the previous poll (per `WorkingTreeStatusEqual`), emits a
+// `worktree:changed` event; the frontend reacts by re-fetching the status and
+// re-rendering both banners. A steady dirty or clean tree emits nothing. A
+// query error skips the tick, keeping the last-seen status as the baseline.
+// Runs until `ctx` is cancelled, mirroring `watchStateFile`. The emitted event
+// carries no payload — the frontend reads the fresh status over the bridge.
+func (a *App) watchWorkingTree(ctx context.Context) {
+	ticker := time.NewTicker(worktreeWatchInterval)
+	defer ticker.Stop()
+
+	previous, err := GetWorkingTreeStatus(a.repoPath)
+	if err != nil {
+		// leave the baseline empty; the first successful poll seeds it and only a
+		// genuine later change emits.
+		previous = WorkingTreeStatus{}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			current, err := GetWorkingTreeStatus(a.repoPath)
+			if err != nil {
+				continue
+			}
+			if !WorkingTreeStatusEqual(previous, current) {
+				previous = current
+				runtime.EventsEmit(a.ctx, "worktree:changed")
 			}
 		}
 	}
