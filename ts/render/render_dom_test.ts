@@ -8,7 +8,8 @@
 import { assert, assertEquals } from "@std/assert";
 import { setupDom } from "./dom_test_setup.ts";
 import { renderFileList } from "./filelist.ts";
-import { renderDiff } from "./hunks.ts";
+import { renderCombinedDiff, renderDiff } from "./hunks.ts";
+import { applyMutation } from "./mutate.ts";
 import { type CommentActions, outdatedCommentsBlock } from "./comments.ts";
 import { lastGoodContext } from "../core/comments.ts";
 import { state } from "./state.ts";
@@ -80,6 +81,22 @@ Deno.test("file list: active status adds the has-comments-active pill class", ()
   assert(
     (item as unknown as HTMLElement).classList.contains("has-comments-active"),
   );
+});
+
+Deno.test("file list: every file in a multi-file selection is marked active", () => {
+  const doc = setupDom();
+  state.diffFiles = [
+    { Path: "a.go", Hunks: [], Binary: false },
+    { Path: "b.go", Hunks: [], Binary: false },
+    { Path: "c.go", Hunks: [], Binary: false },
+  ];
+  state.selectedFiles = ["a.go", "c.go"];
+
+  renderFileList(noopFileListCb);
+
+  const active = Array.from(doc.querySelectorAll("#files .file-item.active"))
+    .map((i) => (i as unknown as HTMLElement).dataset.path);
+  assertEquals(active, ["a.go", "c.go"]);
 });
 
 Deno.test("file list: a marked file renders a checked checkbox", () => {
@@ -241,6 +258,130 @@ Deno.test("diff: a commented line embeds a thread anchored by data-line", () => 
     '#diff-content .diff-line[data-line="3"]',
   ) as unknown as HTMLElement;
   assert(row.classList.contains("commented"));
+});
+
+// a second file whose single hunk shares line number 3 with `sampleFile`, so a
+// combined view of both stacks two sections that each carry a `data-line="3"`.
+const sampleFileB: DiffFile = {
+  Path: "b.go",
+  Binary: false,
+  Hunks: [
+    {
+      OldStart: 1,
+      OldLines: 2,
+      NewStart: 1,
+      NewLines: 3,
+      Lines: [
+        {
+          Type: LineContext,
+          Content: "package other",
+          OldLineNo: 1,
+          NewLineNo: 1,
+        },
+        { Type: LineAdded, Content: "// b added", OldLineNo: 0, NewLineNo: 2 },
+        {
+          Type: LineContext,
+          Content: "func other() {}",
+          OldLineNo: 2,
+          NewLineNo: 3,
+        },
+      ],
+    },
+  ],
+};
+
+Deno.test("combined diff: a single selected file renders sectionless, like the single-file view", () => {
+  const doc = setupDom();
+  state.diffFiles = [structuredClone(sampleFile)];
+  state.commentsCache.set("a.go", []);
+  state.selectedFiles = ["a.go"];
+
+  renderCombinedDiff(["a.go"], {
+    actions: noopActions,
+    onAddComment: () => {},
+  });
+
+  // no section wrapper for one file: the hunks sit directly under #diff-content.
+  assertEquals(doc.querySelectorAll(".diff-file-section").length, 0);
+  assertEquals(doc.querySelectorAll("#diff-content .hunk-header").length, 1);
+});
+
+Deno.test("combined diff: two selected files render two labelled sections in order", () => {
+  const doc = setupDom();
+  state.diffFiles = [structuredClone(sampleFile), structuredClone(sampleFileB)];
+  state.commentsCache.set("a.go", []);
+  state.commentsCache.set("b.go", []);
+  state.selectedFiles = ["a.go", "b.go"];
+
+  renderCombinedDiff(["a.go", "b.go"], {
+    actions: noopActions,
+    onAddComment: () => {},
+  });
+
+  const sections = Array.from(
+    doc.querySelectorAll("#diff-content .diff-file-section"),
+  );
+  assertEquals(sections.length, 2);
+
+  // sections appear in selection order, each tagged with its file and labelled.
+  assertEquals(
+    sections.map((s) => (s as unknown as HTMLElement).dataset.file),
+    ["a.go", "b.go"],
+  );
+  assertEquals(
+    sections.map((s) =>
+      s.querySelector(".diff-file-section-name")?.textContent
+    ),
+    ["a.go", "b.go"],
+  );
+
+  // each section carries its own file's hunk.
+  for (const section of sections) {
+    assert(section.querySelector(".hunk-header"));
+  }
+});
+
+Deno.test("combined diff: a mutation on one file's line patches only that file's section", () => {
+  const doc = setupDom();
+  state.diffFiles = [structuredClone(sampleFile), structuredClone(sampleFileB)];
+  state.commentsCache.set("a.go", []);
+  state.commentsCache.set("b.go", []);
+  state.selectedFiles = ["a.go", "b.go"];
+
+  renderCombinedDiff(["a.go", "b.go"], {
+    actions: noopActions,
+    onAddComment: () => {},
+  });
+
+  // a comment lands on line 3 of b.go — a line number that also exists in a.go.
+  applyMutation({
+    file_path: "b.go",
+    line_number: 3,
+    comments: [comment({ id: "x", anchors: [goodAnchor(3)], content: "in b" })],
+    file_status: "active",
+  }, { actions: noopActions, rebuildOverview: () => {} });
+
+  const sectionA = doc.querySelector('.diff-file-section[data-file="a.go"]');
+  const sectionB = doc.querySelector('.diff-file-section[data-file="b.go"]');
+  assert(sectionA);
+  assert(sectionB);
+
+  // only b.go's section gains the thread and the commented marker.
+  assert(sectionB.querySelector('.comment-thread[data-line="3"]'));
+  assert(
+    (sectionB.querySelector(
+      '.diff-line[data-line="3"]',
+    ) as unknown as HTMLElement).classList.contains("commented"),
+  );
+  assertEquals(
+    sectionA.querySelectorAll('.comment-thread[data-line="3"]').length,
+    0,
+  );
+  assert(
+    !(sectionA.querySelector(
+      '.diff-line[data-line="3"]',
+    ) as unknown as HTMLElement).classList.contains("commented"),
+  );
 });
 
 Deno.test("outdatedCommentsBlock: one item per outdated root with its last context", () => {

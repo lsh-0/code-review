@@ -8,6 +8,7 @@ import type { DiffHunk } from "../core/types.ts";
 import { expandDown, expandUp, hunkReachedEOF } from "../core/expand.ts";
 import { hunkHasComments, overviewVisibleLines } from "../core/overview.ts";
 import { byId, clear, el } from "../dom.ts";
+import { browseFile } from "../client.ts";
 import { type CommentActions, outdatedCommentsBlock } from "./comments.ts";
 import {
   appendCommentThread,
@@ -26,7 +27,9 @@ export interface DiffCallbacks {
   onAddComment: (filePath: string, lineNo: number) => void;
 }
 
-// render a single file's diff into #diff-content.
+// render a single file's diff into #diff-content. The single-file view renders
+// its hunks directly into the content element (no section wrapper), so its DOM
+// is identical to the pre-multi-select layout.
 export function renderDiff(filePath: string, cb: DiffCallbacks): void {
   const content = byId("diff-content");
   if (!content) {
@@ -34,6 +37,53 @@ export function renderDiff(filePath: string, cb: DiffCallbacks): void {
   }
   clear(content);
   renderFileHunks(content, filePath, cb);
+}
+
+// render several files' diffs into #diff-content as one stacked view: one
+// labelled section per path, in the given order, each a filename header followed
+// by that file's full hunks. A single path renders as the plain single-file view
+// (no section chrome) so the common case stays unchanged. Each section carries a
+// `data-file` attribute so per-file updates (comment mutations) can scope to it.
+export function renderCombinedDiff(paths: string[], cb: DiffCallbacks): void {
+  if (paths.length <= 1) {
+    renderDiff(paths[0] ?? "", cb);
+    return;
+  }
+  const content = byId("diff-content");
+  if (!content) {
+    return;
+  }
+  clear(content);
+  for (const filePath of paths) {
+    const section = el("div", { classes: ["diff-file-section"] });
+    section.dataset.file = filePath;
+    section.appendChild(combinedFileHeader(filePath));
+    renderFileHunks(section, filePath, cb);
+    content.appendChild(section);
+  }
+}
+
+// a combined-view section header: the filename and a browse button to open the
+// file externally. The filename is a plain label (the file is already shown, so
+// it does not link anywhere); the browse button mirrors the single-file header's.
+function combinedFileHeader(filePath: string): HTMLElement {
+  const header = el("div", { classes: ["diff-file-section-header"] });
+  header.appendChild(
+    el("span", { classes: ["diff-file-section-name"], text: filePath }),
+  );
+  header.appendChild(
+    el("button", {
+      classes: ["browse-link"],
+      text: "browse",
+      attrs: { title: "Open this file in the preferred application" },
+      onClick: () => {
+        void browseFile(filePath).catch(() =>
+          globalThis.alert(`Could not open ${filePath}`)
+        );
+      },
+    }),
+  );
+  return header;
 }
 
 // render a file's hunks into `parent`. The single-file view (`overviewOnly`

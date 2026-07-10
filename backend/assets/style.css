@@ -672,6 +672,36 @@ button.overview-file-name:hover {
     padding: 1rem 2rem;
 }
 
+/* a file's section in the combined (multi-select) diff pane: a header carrying
+   the filename and browse button, followed by that file's hunks. Sections after
+   the first are spaced apart so the stack reads as distinct files. */
+.diff-file-section + .diff-file-section {
+    margin-top: 2.5rem;
+}
+
+/* the combined section header, mirroring the overview's `.overview-file-header`:
+   a warm bar with the filename and a browse button. It scrolls with its section
+   (like the overview's headers) rather than sticking, so it never overlaps the
+   sticky pane header that summarises the selection. */
+.diff-file-section-header {
+    padding: 0.5rem 1rem;
+    margin-bottom: 1rem;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.diff-file-section-name {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.95rem;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+
 .binary-placeholder {
     padding: 2rem;
     text-align: center;

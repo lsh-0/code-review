@@ -38,7 +38,7 @@ export function setupDom(): HTMLDocument {
   (globalThis as { document: unknown }).document = doc;
 
   // reset view state between tests.
-  state.currentFile = "";
+  state.selectedFiles = [];
   state.currentUser = "";
   state.overviewActive = false;
   state.diffFiles = [];

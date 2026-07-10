@@ -11,7 +11,9 @@ import { setFileMarked as persistMarked } from "../client.ts";
 import { commentsFor, state } from "./state.ts";
 
 export interface FileListCallbacks {
-  onSelectFile: (filePath: string) => void;
+  // `additive` is the ctrl/cmd modifier: a plain click selects one file, an
+  // additive click toggles the file in or out of the current selection.
+  onSelectFile: (filePath: string, additive: boolean) => void;
   onSelectOverview: () => void;
 }
 
@@ -27,10 +29,11 @@ function fileStatus(filePath: string): string {
 
 // build one file-list item: its comment-status pill class, done-mark checkbox
 // (whose change handler is the single place marks are updated and persisted),
-// and click/double-click wiring. `selectedFile` is highlighted when no overview.
+// and click/double-click wiring. A file in `selected` is highlighted when no
+// overview, so every file of a multi-file selection is marked active.
 function buildFileItem(
   filePath: string,
-  selectedFile: string,
+  selected: Set<string>,
   cb: FileListCallbacks,
 ): HTMLElement {
   const classes = ["file-item"];
@@ -38,7 +41,7 @@ function buildFileItem(
   if (status !== "none") {
     classes.push(`has-comments-${status}`);
   }
-  if (filePath === selectedFile && !state.overviewActive) {
+  if (selected.has(filePath) && !state.overviewActive) {
     classes.push("active");
   }
 
@@ -68,7 +71,12 @@ function buildFileItem(
 
   fileItem.appendChild(el("div", { classes: ["file-name"], text: filePath }));
 
-  fileItem.addEventListener("click", () => cb.onSelectFile(filePath));
+  // a ctrl/cmd-click toggles the file into the selection; a plain click selects
+  // just it.
+  fileItem.addEventListener(
+    "click",
+    (ev) => cb.onSelectFile(filePath, ev.ctrlKey || ev.metaKey),
+  );
 
   // the double-click below would otherwise form a word selection on the
   // filename; cancelling selectstart stops that highlight flash.
@@ -85,9 +93,9 @@ function buildFileItem(
   return fileItem;
 }
 
-// render the whole file list and the overview footer entry. The selected file
-// (or the first, if none) is highlighted; the overview entry is highlighted
-// when the overview is active.
+// render the whole file list and the overview footer entry. Every selected file
+// (or the first, if none is selected) is highlighted; the overview entry is
+// highlighted when the overview is active.
 export function renderFileList(cb: FileListCallbacks): void {
   const container = byId("files");
   if (!container) {
@@ -95,9 +103,11 @@ export function renderFileList(cb: FileListCallbacks): void {
   }
   clear(container);
 
-  let selectedFile = state.currentFile;
-  if (selectedFile === "" && state.diffFiles.length > 0) {
-    selectedFile = state.diffFiles[0].Path;
+  const selected = new Set(state.selectedFiles);
+  // with nothing selected, highlight the first file to match the auto-select
+  // below, so the list never renders with no active item.
+  if (selected.size === 0 && state.diffFiles.length > 0) {
+    selected.add(state.diffFiles[0].Path);
   }
 
   const groups = groupFiles(state.diffFiles, state.fileGrouping, {
@@ -119,17 +129,17 @@ export function renderFileList(cb: FileListCallbacks): void {
       );
     }
     for (const file of visible) {
-      container.appendChild(buildFileItem(file.Path, selectedFile, cb));
+      container.appendChild(buildFileItem(file.Path, selected, cb));
     }
   }
 
   renderOverviewEntry(cb);
 
   if (
-    state.currentFile === "" && !state.overviewActive &&
+    state.selectedFiles.length === 0 && !state.overviewActive &&
     state.diffFiles.length > 0
   ) {
-    cb.onSelectFile(state.diffFiles[0].Path);
+    cb.onSelectFile(state.diffFiles[0].Path, false);
   }
 }
 

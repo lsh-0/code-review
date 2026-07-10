@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Diff code is now syntax-highlighted by the file's language for easier reading at a glance
   - Highlighting uses [highlight.js](https://highlightjs.org/) for a curated set of languages; others show as plain text
 - A filter box above the file list narrows it to files whose path matches what you type, for finding a file quickly
+- Ctrl-click or cmd-click a file to add it to the diff pane, stacking several files' diffs in one scroll with per-file headers
+  - A plain click still selects just one file; the sticky pane header shows the file's path or a count for several files
 - A "Group by" control can split the file list under headings; the first grouper separates unmarked files from marked
 - The divider between the file list and the diff can now be dragged to resize the two panes, by mouse or arrow keys
 - Banners now warn when the working tree has uncommitted changes the diff cannot show, updating live as files change

@@ -5,32 +5,6 @@ Each item is separated by `---` and has key-value metadata followed
 by optional free-text context.
 
 ---
-title: Ctrl-click multi-select files into a combined diff pane
-added: 2026-06-12
-updated: 2026-06-18
-effort: high
-tags: frontend, ui
-summary: Ctrl-clicking file items selects multiple files and renders them as one stacked pane on the right, each section keeping its filename header
-
-Today selection is single-file: `currentFile` is a string, `selectFile`
-clears every `.active` item and marks one, then `renderDiff` renders that
-one file into `#diff-content`. The filename shows once in
-`#current-file-name`.
-
-Multi-select changes the shape: replace the single `currentFile` string
-with an ordered selection set; a plain click selects just one (current
-behaviour), ctrl/cmd-click toggles a file in/out of the set. Render the
-combined view by iterating the selected files and, for each, emitting a
-filename header followed by that file's hunks into `#diff-content` —
-the per-file header moves from the single `#current-file-name` element
-into the stacked content so every section is labelled.
-
-Now somewhat easier: per-file hunks already load lazily (`ensureFileDiff`)
-and `renderDiff` renders one file at a time, so the data side composes for
-several files. The bulk of the work is the selection-model refactor
-(`currentFile` to a set, multi-`.active`, append-not-replace rendering)
-and auditing the single-file click/scroll handlers.
----
 title: Import review feedback from Bitbucket and GitHub
 added: 2026-06-12
 effort: high

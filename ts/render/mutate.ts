@@ -22,6 +22,34 @@ export interface MutationContext {
   rebuildOverview: () => void;
 }
 
+// the DOM region a file's diff occupies: its `[data-file]` section in the
+// combined (multi-file) view, or the whole `#diff-content` in the single-file
+// view (which renders sectionless). Scoping line/thread queries to this region
+// keeps a line number that recurs across stacked files unambiguous.
+function fileRegion(filePath: string): Element | null {
+  const content = byId("diff-content");
+  if (!content) {
+    return null;
+  }
+  return content.querySelector(
+    `.diff-file-section[data-file="${cssEscape(filePath)}"]`,
+  ) ?? content;
+}
+
+// escape a string for safe use in a CSS attribute selector. File paths contain
+// `/` and `.`, which are selector-safe, but quotes or other metacharacters in a
+// path would break the `[data-file="…"]` query; escaping guards against that.
+function cssEscape(value: string): string {
+  const cssApi = (globalThis as { CSS?: { escape?: (s: string) => string } })
+    .CSS;
+  if (cssApi?.escape) {
+    return cssApi.escape(value);
+  }
+  // fallback for the test shim, which has no `CSS.escape`: escape the quote and
+  // backslash that would otherwise terminate or corrupt the quoted selector.
+  return value.replace(/["\\]/g, "\\$&");
+}
+
 // apply a mutation result incrementally. The affected file's cache is
 // overwritten, then either the overview is rebuilt (if active) or the touched
 // thread is patched and the file's status pill updated.
@@ -47,12 +75,14 @@ export function applyMutation(
 // re-derived wholesale. Removed when no outdated comments remain (e.g. the last
 // outdated comment was deleted).
 function patchOutdatedBlock(filePath: string, actions: CommentActions): void {
-  const content = byId("diff-content");
-  if (!content) {
+  const region = fileRegion(filePath);
+  if (!region) {
     return;
   }
 
-  const existing = content.querySelector(`.outdated-comments[data-outdated]`);
+  const existing = region.querySelector(
+    `.outdated-comments[data-outdated="${cssEscape(filePath)}"]`,
+  );
   const block = outdatedCommentsBlock(filePath, commentsFor(filePath), actions);
 
   if (!block) {
@@ -65,8 +95,11 @@ function patchOutdatedBlock(filePath: string, actions: CommentActions): void {
     return;
   }
 
-  // no block yet: insert at the very top of the file view, above the hunks.
-  content.insertBefore(block, content.firstChild);
+  // no block yet: insert at the very top of the file's region. In the combined
+  // view that is after the section header; `renderFileHunks` likewise inserts
+  // the block as the first content under the header, so this matches.
+  const header = region.querySelector(".diff-file-section-header");
+  region.insertBefore(block, header ? header.nextSibling : region.firstChild);
 }
 
 // re-render just the thread anchored at `lineNo` from the (already updated)
@@ -77,16 +110,16 @@ function patchLineThread(
   lineNo: number,
   actions: CommentActions,
 ): void {
-  const content = byId("diff-content");
-  if (!content) {
+  const region = fileRegion(filePath);
+  if (!region) {
     return;
   }
 
-  const existing = content.querySelector(
+  const existing = region.querySelector(
     `.comment-thread[data-line="${lineNo}"]`,
   );
   const comments = getCommentsForLine(commentsFor(filePath), lineNo);
-  const line = content.querySelector<HTMLElement>(
+  const line = region.querySelector<HTMLElement>(
     `.diff-line[data-line="${lineNo}"]`,
   );
 

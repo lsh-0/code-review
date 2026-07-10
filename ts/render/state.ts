@@ -5,9 +5,20 @@
 // lives in the pure core.
 
 import type { Comment, DiffFile } from "../core/types.ts";
+import { primaryFile } from "../core/selection.ts";
 
 export interface ViewState {
+  // the ordered set of files shown in the diff pane. A plain click selects one;
+  // a ctrl/cmd-click toggles a file in or out. Empty means no file is shown (the
+  // overview, or the not-yet-loaded initial state).
+  selectedFiles: string[];
+
+  // the primary (anchor) file: the last-toggled selected path, or "" when the
+  // selection is empty. A computed accessor over `selectedFiles`, kept for the
+  // file-list highlight fallback and the refresh path that need one "current"
+  // file. Assigning it replaces the whole selection (empty string clears it).
   currentFile: string;
+
   currentUser: string;
   overviewActive: boolean;
 
@@ -42,7 +53,17 @@ export interface ViewState {
 }
 
 export const state: ViewState = {
-  currentFile: "",
+  selectedFiles: [],
+  // `currentFile` is derived from `selectedFiles`: reading it returns the primary
+  // (last-toggled) path; assigning it replaces the selection. This keeps the many
+  // single-file read/write sites working unchanged while `selectedFiles` is the
+  // source of truth.
+  get currentFile(): string {
+    return primaryFile(this.selectedFiles);
+  },
+  set currentFile(filePath: string) {
+    this.selectedFiles = filePath === "" ? [] : [filePath];
+  },
   currentUser: "",
   overviewActive: false,
   diffFiles: [],

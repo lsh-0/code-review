@@ -10,7 +10,7 @@ import { byId, el, requireId } from "./dom.ts";
 import { state } from "./render/state.ts";
 import { clampPaneWidth } from "./core/panes.ts";
 import { type CommentActions } from "./render/comments.ts";
-import { type DiffCallbacks, renderDiff } from "./render/hunks.ts";
+import { type DiffCallbacks, renderCombinedDiff } from "./render/hunks.ts";
 import { renderFileList } from "./render/filelist.ts";
 import { groupers } from "./core/grouping.ts";
 import { renderOverview } from "./render/overview.ts";
@@ -33,13 +33,14 @@ import {
   updateComment,
 } from "./render/modals.ts";
 import {
-  ensureFileDiff,
+  ensureFileDiffs,
   loadCommentedFiles,
   loadComments,
   loadDiffFiles,
   recomputeDiff,
   reloadReview,
 } from "./render/load.ts";
+import { nextSelection } from "./core/selection.ts";
 
 const zoomMin = 0.5;
 const zoomMax = 3.0;
@@ -78,43 +79,71 @@ function rebuildOverview(): void {
 const mutationCtx: MutationContext = { actions, rebuildOverview };
 
 const fileListCallbacks = {
-  onSelectFile: (f: string) => void selectFile(f),
+  onSelectFile: (f: string, additive = false) => void selectFile(f, additive),
   onSelectOverview: () => void selectOverview(),
 };
 
 const overviewCallbacks = {
   diff: diffCallbacks,
   actions,
+  // selecting a file from the overview always opens just that file.
   onSelectFile: (f: string) => void selectFile(f),
   onAddReviewComment: () => showReviewCommentModal(),
 };
 
-// select a file and render its diff from already-loaded state — no diff
-// recompute, no git. Re-selecting the current file is a no-op so scroll and
+// select a file and render the diff pane from already-loaded state — no diff
+// recompute, no git. A plain click (additive false) selects just `filePath`; a
+// ctrl/cmd-click (additive true) toggles it in or out of the current selection.
+// A plain re-click of a single already-selected file is a no-op so scroll and
 // expanded context survive.
-async function selectFile(filePath: string): Promise<void> {
-  if (filePath === state.currentFile && !state.overviewActive) {
+async function selectFile(filePath: string, additive = false): Promise<void> {
+  const alreadyShown = !state.overviewActive &&
+    state.selectedFiles.length === 1 && state.selectedFiles[0] === filePath;
+  if (!additive && alreadyShown) {
     return;
   }
   state.overviewActive = false;
-  state.currentFile = filePath;
+  state.selectedFiles = nextSelection(state.selectedFiles, filePath, additive);
+  await renderSelection();
+}
+
+// render the current file selection into the diff pane: load every selected
+// file's hunks and comments, mark the file list, label the sticky header, and
+// render the combined (or single-file) view. Resets scroll, since the selection
+// has changed.
+async function renderSelection(): Promise<void> {
+  const selected = state.selectedFiles;
 
   const diffView = byId("diff-view");
   if (diffView) {
     diffView.scrollTop = 0;
   }
 
-  setActiveItem(filePath);
-  const nameEl = byId("current-file-name");
-  if (nameEl) {
-    nameEl.textContent = filePath;
-  }
-  renderBrowseLink(filePath);
-  renderFileDirtyBanner(filePath);
+  setActiveItem(selected);
+  labelSelection(selected);
+  renderFileDirtyBanner(state.currentFile);
 
-  await ensureFileDiff(filePath);
-  await loadComments(filePath);
-  renderDiff(filePath, diffCallbacks);
+  await ensureFileDiffs(selected);
+  await Promise.all(selected.map((p) => loadComments(p)));
+  renderCombinedDiff(selected, diffCallbacks);
+}
+
+// label the sticky pane header for the selection: a single file shows its path
+// and a top browse button (the pre-multi-select look); several files show a
+// count, with each section carrying its own filename header and browse button.
+function labelSelection(selected: string[]): void {
+  const nameEl = byId("current-file-name");
+  if (selected.length === 1) {
+    if (nameEl) {
+      nameEl.textContent = selected[0];
+    }
+    renderBrowseLink(selected[0]);
+    return;
+  }
+  if (nameEl) {
+    nameEl.textContent = `${selected.length} files`;
+  }
+  removeBrowseLink();
 }
 
 // show the review overview, reloading state first so it reflects an agent's
@@ -140,10 +169,12 @@ async function selectOverview(): Promise<void> {
   await renderOverview(reviewComments, files, overviewCallbacks);
 }
 
-// mark the file-list item for `filePath` active, clearing the rest.
-function setActiveItem(filePath: string): void {
+// mark every file-list item in `selected` active, clearing the rest.
+function setActiveItem(selected: string[]): void {
+  const set = new Set(selected);
   for (const item of document.querySelectorAll<HTMLElement>(".file-item")) {
-    item.classList.toggle("active", item.dataset.path === filePath);
+    const path = item.dataset.path;
+    item.classList.toggle("active", path !== undefined && set.has(path));
   }
 }
 
@@ -188,10 +219,16 @@ async function performFullRefresh(): Promise<void> {
   if (state.overviewActive) {
     const { reviewComments, files } = await loadCommentedFiles();
     await renderOverview(reviewComments, files, overviewCallbacks);
-  } else if (state.currentFile !== "") {
-    // the reload dropped this file's hunks; re-fetch before rendering.
-    await ensureFileDiff(state.currentFile);
-    renderDiff(state.currentFile, diffCallbacks);
+    return;
+  }
+
+  // drop any selected file that the recompute removed from the diff, so a stale
+  // path neither holds an active mark nor renders an empty section. The reload
+  // also dropped the surviving files' hunks; `renderSelection` re-fetches them.
+  const present = new Set(state.diffFiles.map((f) => f.Path));
+  state.selectedFiles = state.selectedFiles.filter((p) => present.has(p));
+  if (state.selectedFiles.length > 0) {
+    await renderSelection();
   }
 }
 
