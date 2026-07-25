@@ -12,6 +12,7 @@ import {
   outdatedComments,
   rootComments,
   threadAuthors,
+  topLevelComments,
 } from "./comments.ts";
 import type { Anchor, Comment, CommentStatus } from "./types.ts";
 
@@ -176,6 +177,37 @@ Deno.test("outdatedComments: only outdated roots, never replies", () => {
 Deno.test("outdatedComments: empty when no root is outdated", () => {
   const given = [root("a", "active", 5), reply("b", "a")];
   assertEquals(outdatedComments(given), []);
+});
+
+Deno.test("topLevelComments: only anchorless roots, never lines/outdated/replies", () => {
+  const topLevel = comment({ id: "a", content: "about the whole file" });
+  const line = root("b", "active", 7);
+  const outdated = comment({
+    id: "c",
+    anchors: [goodAnchor(5), adriftAnchor()],
+  });
+  const replyToTopLevel = reply("d", "a");
+  const given = [topLevel, line, outdated, replyToTopLevel];
+  assertEquals(topLevelComments(given).map((c) => c.id), ["a"]);
+});
+
+Deno.test("topLevelComments: the three buckets are disjoint", () => {
+  const topLevel = comment({ id: "a" });
+  const line = root("b", "active", 7);
+  const outdated = comment({
+    id: "c",
+    anchors: [goodAnchor(5), adriftAnchor()],
+  });
+  const given = [topLevel, line, outdated];
+
+  assertEquals(topLevelComments(given).map((c) => c.id), ["a"]);
+  assertEquals(getCommentsForLine(given, 7).map((c) => c.id), ["b"]);
+  assertEquals(outdatedComments(given).map((c) => c.id), ["c"]);
+});
+
+Deno.test("topLevelComments: empty when every root is line-anchored", () => {
+  const given = [root("a", "active", 5), reply("b", "a")];
+  assertEquals(topLevelComments(given), []);
 });
 
 Deno.test("fileCommentStatus: any active root is active", () => {

@@ -34,6 +34,7 @@ function hideModal(modalID: string): void {
 // open the add-comment modal for a line in the current file.
 export function showCommentModal(filePath: string, lineNumber: number): void {
   state.modal.reviewCommentMode = false;
+  state.modal.fileCommentMode = false;
   state.modal.file = filePath;
   state.modal.lineNumber = lineNumber;
   showModal("comment-modal", "comment-input", "");
@@ -43,6 +44,16 @@ export function showCommentModal(filePath: string, lineNumber: number): void {
 // file or line anchor).
 export function showReviewCommentModal(): void {
   state.modal.reviewCommentMode = true;
+  state.modal.fileCommentMode = false;
+  showModal("comment-modal", "comment-input", "");
+}
+
+// open the add-comment modal for a top-level file comment: feedback attached to
+// `filePath` but to no line, authored from the top of that file's view.
+export function showFileCommentModal(filePath: string): void {
+  state.modal.reviewCommentMode = false;
+  state.modal.fileCommentMode = true;
+  state.modal.file = filePath;
   showModal("comment-modal", "comment-input", "");
 }
 
@@ -61,6 +72,13 @@ export async function saveComment(): Promise<void> {
 
   if (state.modal.reviewCommentMode) {
     const result = await api.addReviewComment(content);
+    hideCommentModal();
+    applyMutation(result, mutationCtx);
+    return;
+  }
+
+  if (state.modal.fileCommentMode) {
+    const result = await api.addFileComment(state.modal.file, content);
     hideCommentModal();
     applyMutation(result, mutationCtx);
     return;

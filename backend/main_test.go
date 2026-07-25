@@ -381,6 +381,70 @@ func TestApp_ReviewLevelComments(t *testing.T) {
 	}
 }
 
+func TestApp_AddFileComment(t *testing.T) {
+	tmpDir := t.TempDir()
+	app := &App{
+		review:    model.NewReview("/some/repo/path", "feature", "main"),
+		repoPath:  "/some/repo/path",
+		dataDir:   tmpDir,
+		statePath: filepath.Join(tmpDir, "test.json"),
+		userName:  "Test User",
+		// a binary file has no lines to comment on; the top-level comment is its
+		// only comment surface. The overview iterates diffFiles for ordering.
+		diffFiles: []DiffFile{{Path: "img.png", Binary: true}},
+	}
+
+	if _, err := app.AddFileComment("img.png", "wrong asset"); err != nil {
+		t.Fatalf("AddFileComment failed: %v", err)
+	}
+
+	fileDiff := app.review.GetFileDiff("img.png")
+	if fileDiff == nil {
+		t.Fatalf("expected a FileDiff to be created for img.png")
+	}
+	if len(fileDiff.Comments) != 1 {
+		t.Fatalf("expected 1 file comment, got %d", len(fileDiff.Comments))
+	}
+	c := fileDiff.Comments[0]
+
+	// a top-level file comment is anchorless: no line, never outdated — the same
+	// shape as a review-level comment.
+	if len(c.Anchors) != 0 {
+		t.Errorf("expected an anchorless comment, got %d anchors", len(c.Anchors))
+	}
+	if c.CurrentLineNumber() != 0 {
+		t.Errorf("expected current line 0, got %d", c.CurrentLineNumber())
+	}
+	if c.IsOutdated() {
+		t.Errorf("a top-level comment must never be outdated")
+	}
+	if c.Content != "wrong asset" || c.Author != "Test User" {
+		t.Errorf("unexpected comment content/author: %+v", c)
+	}
+
+	// the state file is persisted.
+	if _, err := os.Stat(app.statePath); err != nil {
+		t.Errorf("state not saved: %v", err)
+	}
+
+	// a binary file whose only feedback is a top-level comment appears in the
+	// overview's commented-files listing.
+	data, err := app.GetCommentedFiles()
+	if err != nil {
+		t.Fatalf("GetCommentedFiles failed: %v", err)
+	}
+	var listed []struct {
+		Path     string           `json:"path"`
+		Comments []*model.Comment `json:"comments"`
+	}
+	if err := json.Unmarshal([]byte(data), &listed); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(listed) != 1 || listed[0].Path != "img.png" {
+		t.Fatalf("expected img.png listed as commented, got %+v", listed)
+	}
+}
+
 func TestApp_GetReviewComments(t *testing.T) {
 	tmpDir := t.TempDir()
 	app := &App{

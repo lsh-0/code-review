@@ -85,6 +85,19 @@ export function outdatedComments(comments: Comment[]): Comment[] {
   return comments.filter((c) => !c.parent_id && isOutdated(c));
 }
 
+// the root comments attached to the file but to no line: they carry no anchor,
+// so their current line number is 0 and they are not outdated. These are the
+// "top-level" file comments (the anchorless shape review-level comments also
+// use), rendered at the top of the file view above the untethered block — the
+// only way to comment on a file with no commentable line, such as a binary file.
+// This is the third bucket beside `getCommentsForLine` (line-anchored) and
+// `outdatedComments` (adrift); the three are disjoint. Replies are excluded.
+export function topLevelComments(comments: Comment[]): Comment[] {
+  return comments.filter(
+    (c) => !c.parent_id && !isOutdated(c) && currentLineNumber(c) === 0,
+  );
+}
+
 // the aggregate review status of a file from its flat comment list, matching
 // the Go `model.FileCommentStatus`: `active` if any root is active, else
 // `resolved` if every root is resolved, else `ignored` if any root is ignored,

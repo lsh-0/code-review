@@ -11,6 +11,7 @@ import {
   type CommentActions,
   lineCommentThread,
   outdatedCommentsBlock,
+  topLevelCommentsBlock,
 } from "./comments.ts";
 import { setFileStatusPill } from "./filelist.ts";
 import { commentsFor, state } from "./state.ts";
@@ -20,6 +21,9 @@ import { commentsFor, state } from "./state.ts";
 export interface MutationContext {
   actions: CommentActions;
   rebuildOverview: () => void;
+  // the top-of-file "Add comment" handler, needed to rebuild the top-level
+  // block (which carries the button) after a mutation.
+  onAddFileComment: (filePath: string) => void;
 }
 
 // the DOM region a file's diff occupies: its `[data-file]` section in the
@@ -64,9 +68,50 @@ export function applyMutation(
     return;
   }
 
-  patchLineThread(result.file_path, result.line_number, ctx.actions);
+  // a top-level file comment carries line 0 (no line thread to patch); line
+  // threads are patched only for real, positive line numbers.
+  if (result.line_number > 0) {
+    patchLineThread(result.file_path, result.line_number, ctx.actions);
+  }
+  patchTopLevelBlock(result.file_path, ctx);
   patchOutdatedBlock(result.file_path, ctx.actions);
   setFileStatusPill(result.file_path, result.file_status);
+}
+
+// rebuild the top-of-file top-level (anchorless) comments block from the updated
+// cache. The block carries the "Add comment" button, so it is always present in
+// the single-file view; a mutation re-derives it wholesale (button plus threads)
+// and replaces the existing one, or inserts it at the top of the file region if
+// somehow absent.
+function patchTopLevelBlock(filePath: string, ctx: MutationContext): void {
+  const region = fileRegion(filePath);
+  if (!region) {
+    return;
+  }
+
+  const existing = region.querySelector(
+    `.top-level-comments[data-toplevel="${cssEscape(filePath)}"]`,
+  );
+  const block = topLevelCommentsBlock(
+    filePath,
+    commentsFor(filePath),
+    ctx.actions,
+    ctx.onAddFileComment,
+  );
+  if (!block) {
+    existing?.remove();
+    return;
+  }
+
+  if (existing) {
+    existing.parentNode?.replaceChild(block, existing);
+    return;
+  }
+
+  // no block yet: insert at the very top of the file region, above the outdated
+  // block and the code, matching `renderFileHunks`.
+  const header = region.querySelector(".diff-file-section-header");
+  region.insertBefore(block, header ? header.nextSibling : region.firstChild);
 }
 
 // rebuild the untethered outdated-comments block at the top of the file view

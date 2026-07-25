@@ -47,6 +47,7 @@ export interface ViewState {
     commentID: string;
     replyID: string;
     reviewCommentMode: boolean;
+    fileCommentMode: boolean;
   };
 
   zoomLevel: number;
@@ -77,6 +78,7 @@ export const state: ViewState = {
     commentID: "",
     replyID: "",
     reviewCommentMode: false,
+    fileCommentMode: false,
   },
   zoomLevel: 1.0,
 };

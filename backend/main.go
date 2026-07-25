@@ -572,6 +572,21 @@ func (a *App) AddReviewComment(content string) (string, error) {
 	return a.saveAndResult("", -1)
 }
 
+// add a top-level file comment: feedback attached to a file but to no line,
+// authored from the top of that file's view. Like a review-level comment it
+// carries no anchor (`AddComment` with line 0 appends none), so it is never
+// outdated and has no line placement. This is the only way to comment on a file
+// with no commentable line — a binary file — and the way to remark on a file as
+// a whole. The file's `FileDiff` is created on demand when it has no comments yet.
+func (a *App) AddFileComment(filePath string, content string) (string, error) {
+	fileDiff := a.review.GetFileDiff(filePath)
+	if fileDiff == nil {
+		fileDiff = a.review.AddFileDiff(filePath)
+	}
+	fileDiff.AddComment(content, 0, a.userName)
+	return a.saveAndResult(filePath, 0)
+}
+
 func (a *App) UpdateComment(filePath string, commentID string, content string) (string, error) {
 	comment := a.findComment(filePath, commentID)
 	if comment == nil {

@@ -35,6 +35,7 @@ import {
   saveReply,
   showCommentModal,
   showEditCommentModal,
+  showFileCommentModal,
   showReplyModal,
   showReviewCommentModal,
   updateComment,
@@ -72,6 +73,7 @@ const actions: CommentActions = {
 const diffCallbacks: DiffCallbacks = {
   actions,
   onAddComment: (f, lineNo) => showCommentModal(f, lineNo),
+  onAddFileComment: (f) => showFileCommentModal(f),
 };
 
 // rebuild the overview wholesale (used after a mutation while the overview is
@@ -83,7 +85,11 @@ function rebuildOverview(): void {
   });
 }
 
-const mutationCtx: MutationContext = { actions, rebuildOverview };
+const mutationCtx: MutationContext = {
+  actions,
+  rebuildOverview,
+  onAddFileComment: (f) => showFileCommentModal(f),
+};
 
 const fileListCallbacks = {
   onSelectFile: (f: string, additive = false) => void selectFile(f, additive),

@@ -9,7 +9,11 @@ import { expandDown, expandUp, hunkReachedEOF } from "../core/expand.ts";
 import { hunkHasComments, overviewVisibleLines } from "../core/overview.ts";
 import { byId, clear, el } from "../dom.ts";
 import { browseFile } from "../client.ts";
-import { type CommentActions, outdatedCommentsBlock } from "./comments.ts";
+import {
+  type CommentActions,
+  outdatedCommentsBlock,
+  topLevelCommentsBlock,
+} from "./comments.ts";
 import {
   appendCommentThread,
   createDiffLine,
@@ -25,6 +29,7 @@ import { commentsFor, diffFile } from "./state.ts";
 export interface DiffCallbacks {
   actions: CommentActions;
   onAddComment: (filePath: string, lineNo: number) => void;
+  onAddFileComment: (filePath: string) => void;
 }
 
 // render a single file's diff into #diff-content. The single-file view renders
@@ -101,6 +106,21 @@ export function renderFileHunks(
   const file = diffFile(filePath);
   if (!file) {
     return;
+  }
+
+  // top-level (anchorless) file comments render at the very top of the file, for
+  // text and binary files alike — a binary file has no line to comment on, so
+  // this is its only comment surface. The "Add comment" button shows only in the
+  // single-file view; the overview renders these read-only (no button, and only
+  // when comments exist).
+  const topLevel = topLevelCommentsBlock(
+    filePath,
+    commentsFor(filePath),
+    cb.actions,
+    overviewOnly ? undefined : cb.onAddFileComment,
+  );
+  if (topLevel) {
+    parent.appendChild(topLevel);
   }
 
   if (file.Binary) {

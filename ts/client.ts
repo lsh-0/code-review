@@ -45,6 +45,7 @@ interface BoundApp {
     offset: number,
   ): Promise<string>;
   AddReviewComment(content: string): Promise<string>;
+  AddFileComment(path: string, content: string): Promise<string>;
   UpdateComment(
     path: string,
     commentID: string,
@@ -243,6 +244,12 @@ export const addReviewComment = (
   content: string,
 ): Promise<CommentMutationResult> =>
   callJSON("AddReviewComment", (a) => a.AddReviewComment(content));
+
+export const addFileComment = (
+  path: string,
+  content: string,
+): Promise<CommentMutationResult> =>
+  callJSON("AddFileComment", (a) => a.AddFileComment(path, content));
 
 export const updateComment = (
   path: string,

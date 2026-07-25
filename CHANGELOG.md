@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Banners now warn when the working tree has uncommitted changes the diff cannot show, updating live as files change
   - A page-wide banner counts modified and deleted tracked files; new untracked files are ignored
   - Viewing a changed file shows a per-file warning linking to your configured diff tool via `git difftool`
+- An "Add comment" button at the top of each file lets you leave feedback on the file as a whole, not just a line
+  - This is the only way to comment on a binary file, which has no lines to attach a comment to
+  - Top-level comments sit above any untethered comments, which sit above the code, and show in the review overview too
 
 ### Changed
 

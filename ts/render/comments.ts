@@ -10,6 +10,7 @@ import {
   lastGoodContext,
   outdatedComments,
   threadAuthors,
+  topLevelComments,
 } from "../core/comments.ts";
 import { el } from "../dom.ts";
 import { commentsFor, state } from "./state.ts";
@@ -42,6 +43,48 @@ export function createCommentThread(
     );
   }
   return thread;
+}
+
+// build the top-of-file block for a file's top-level (anchorless) comments: an
+// optional "Add comment" button followed by each top-level comment's thread. The
+// container carries `data-toplevel` so an incremental update can find and replace
+// it. It renders at the very top of the file view, above the untethered block and
+// the code.
+//
+// `onAddComment` controls the button: pass it (single-file view) to always show
+// an "Add comment" control, so the block is present even with no comments yet;
+// omit it (overview, read-only) to render only when there are top-level comments,
+// returning null otherwise.
+export function topLevelCommentsBlock(
+  filePath: string,
+  comments: Comment[],
+  actions: CommentActions,
+  onAddComment?: (filePath: string) => void,
+): HTMLElement | null {
+  const topLevel = topLevelComments(comments);
+  if (!onAddComment && topLevel.length === 0) {
+    return null;
+  }
+
+  const container = el("div", { classes: ["top-level-comments"] });
+  container.setAttribute("data-toplevel", filePath);
+
+  if (onAddComment) {
+    container.appendChild(
+      el("button", {
+        classes: ["top-level-add-comment"],
+        text: "Add comment",
+        attrs: { title: "Add a comment about this file" },
+        onClick: () => onAddComment(filePath),
+      }),
+    );
+  }
+
+  if (topLevel.length > 0) {
+    container.appendChild(createCommentThread(filePath, topLevel, actions));
+  }
+
+  return container;
 }
 
 // build the untethered block for every outdated root comment in `comments`, or

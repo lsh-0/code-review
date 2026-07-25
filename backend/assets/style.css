@@ -923,6 +923,35 @@ button.overview-file-name:hover {
     background: var(--color-status-resolved);
 }
 
+/* top-level (anchorless) file comments: feedback about the whole file, not any
+   line. They render at the very top of the file view, above the untethered block
+   and the code — the only comment surface for a file with no lines (a binary
+   file). */
+.top-level-comments {
+    margin-bottom: 1rem;
+}
+
+.top-level-add-comment {
+    margin: 0.5rem 0;
+    padding: 0.3rem 0.8rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    color: var(--color-accent);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.top-level-add-comment:hover {
+    background: var(--color-bg-subtle);
+}
+
+/* the top-level thread sits directly under the button with a small gap. */
+.top-level-comments .comment-thread {
+    margin-top: 0.5rem;
+}
+
 /* outdated comments: the anchor was lost after the file changed, so they render
    untethered at the top of the file view. The warning border marks them as no
    longer relevant to the current diff. */

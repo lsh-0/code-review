@@ -8,7 +8,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { setupDom } from "./dom_test_setup.ts";
 import { renderFileList } from "./filelist.ts";
-import { renderCombinedDiff, renderDiff } from "./hunks.ts";
+import { renderCombinedDiff, renderDiff, renderFileHunks } from "./hunks.ts";
 import { applyMutation } from "./mutate.ts";
 import { type CommentActions, outdatedCommentsBlock } from "./comments.ts";
 import { lastGoodContext } from "../core/comments.ts";
@@ -244,7 +244,11 @@ Deno.test("diff: renders a hunk header and one row per line", () => {
   state.commentsCache.set("a.go", []);
   state.currentFile = "a.go";
 
-  renderDiff("a.go", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("a.go", {
+    actions: noopActions,
+    onAddComment: () => {},
+    onAddFileComment: () => {},
+  });
 
   const header = doc.querySelector("#diff-content .hunk-header");
   assert(header);
@@ -259,7 +263,11 @@ Deno.test("diff: an added line carries the added class and a data-line", () => {
   state.diffFiles = [structuredClone(sampleFile)];
   state.commentsCache.set("a.go", []);
 
-  renderDiff("a.go", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("a.go", {
+    actions: noopActions,
+    onAddComment: () => {},
+    onAddFileComment: () => {},
+  });
 
   const added = doc.querySelector(
     "#diff-content .diff-line.added",
@@ -275,7 +283,11 @@ Deno.test("diff: a commented line embeds a thread anchored by data-line", () => 
     comment({ id: "x", anchors: [goodAnchor(3)], content: "look here" }),
   ]);
 
-  renderDiff("a.go", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("a.go", {
+    actions: noopActions,
+    onAddComment: () => {},
+    onAddFileComment: () => {},
+  });
 
   const thread = doc.querySelector(
     '#diff-content .comment-thread[data-line="3"]',
@@ -329,6 +341,7 @@ Deno.test("combined diff: a single selected file renders sectionless, like the s
   renderCombinedDiff(["a.go"], {
     actions: noopActions,
     onAddComment: () => {},
+    onAddFileComment: () => {},
   });
 
   // no section wrapper for one file: the hunks sit directly under #diff-content.
@@ -346,6 +359,7 @@ Deno.test("combined diff: two selected files render two labelled sections in ord
   renderCombinedDiff(["a.go", "b.go"], {
     actions: noopActions,
     onAddComment: () => {},
+    onAddFileComment: () => {},
   });
 
   const sections = Array.from(
@@ -381,6 +395,7 @@ Deno.test("combined diff: a mutation on one file's line patches only that file's
   renderCombinedDiff(["a.go", "b.go"], {
     actions: noopActions,
     onAddComment: () => {},
+    onAddFileComment: () => {},
   });
 
   // a comment lands on line 3 of b.go — a line number that also exists in a.go.
@@ -389,7 +404,11 @@ Deno.test("combined diff: a mutation on one file's line patches only that file's
     line_number: 3,
     comments: [comment({ id: "x", anchors: [goodAnchor(3)], content: "in b" })],
     file_status: "active",
-  }, { actions: noopActions, rebuildOverview: () => {} });
+  }, {
+    actions: noopActions,
+    rebuildOverview: () => {},
+    onAddFileComment: () => {},
+  });
 
   const sectionA = doc.querySelector('.diff-file-section[data-file="a.go"]');
   const sectionB = doc.querySelector('.diff-file-section[data-file="b.go"]');
@@ -473,7 +492,11 @@ Deno.test("diff: a binary file renders a placeholder, no lines", () => {
   ];
   state.commentsCache.set("img.png", []);
 
-  renderDiff("img.png", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("img.png", {
+    actions: noopActions,
+    onAddComment: () => {},
+    onAddFileComment: () => {},
+  });
 
   const placeholder = doc.querySelector("#diff-content .binary-placeholder");
   assert(placeholder);
@@ -494,7 +517,11 @@ Deno.test("diff: a pure rename renders a placeholder naming the old path", () =>
   ];
   state.commentsCache.set("new.go", []);
 
-  renderDiff("new.go", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("new.go", {
+    actions: noopActions,
+    onAddComment: () => {},
+    onAddFileComment: () => {},
+  });
 
   const placeholder = doc.querySelector("#diff-content .rename-placeholder");
   assert(placeholder);
@@ -512,11 +539,133 @@ Deno.test("diff: a rename with edits renders its hunks, not the placeholder", ()
   }];
   state.commentsCache.set("new.go", []);
 
-  renderDiff("new.go", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("new.go", {
+    actions: noopActions,
+    onAddComment: () => {},
+    onAddFileComment: () => {},
+  });
 
   assertEquals(
     doc.querySelectorAll("#diff-content .rename-placeholder").length,
     0,
   );
   assert(doc.querySelectorAll("#diff-content .diff-line").length > 0);
+});
+
+Deno.test("diff: the single-file view shows a top-of-file 'Add comment' control", () => {
+  const doc = setupDom();
+  state.diffFiles = [structuredClone(sampleFile)];
+  state.commentsCache.set("a.go", []);
+
+  renderDiff("a.go", {
+    actions: noopActions,
+    onAddComment: () => {},
+    onAddFileComment: () => {},
+  });
+
+  const block = doc.querySelector("#diff-content .top-level-comments");
+  assert(block, "expected a top-level block at the top of the file");
+  assertEquals(block.getAttribute("data-toplevel"), "a.go");
+  const button = block.querySelector(".top-level-add-comment");
+  assert(button, "expected an 'Add comment' control");
+  assertEquals(button.textContent, "Add comment");
+
+  // the top-level block is the first child of the content, above the code.
+  const content = doc.querySelector("#diff-content");
+  assertEquals(content?.firstElementChild, block);
+});
+
+Deno.test("diff: a top-level comment renders at the top, before untethered and code", () => {
+  const doc = setupDom();
+  state.diffFiles = [structuredClone(sampleFile)];
+  state.commentsCache.set("a.go", [
+    // a top-level (anchorless) comment, an outdated one, and a live line comment.
+    comment({ id: "top", content: "whole-file note" }),
+    comment({
+      id: "old",
+      anchors: [goodAnchor(5), adriftAnchor()],
+      content: "gone",
+    }),
+    comment({ id: "live", anchors: [goodAnchor(3)], content: "look here" }),
+  ]);
+
+  renderDiff("a.go", {
+    actions: noopActions,
+    onAddComment: () => {},
+    onAddFileComment: () => {},
+  });
+
+  const content = doc.querySelector("#diff-content");
+  const topLevel = content?.querySelector(".top-level-comments");
+  const outdated = content?.querySelector(".outdated-comments");
+  const firstHunk = content?.querySelector(".diff-hunk");
+  assert(topLevel, "expected a top-level block");
+  assert(outdated, "expected an untethered block");
+  assert(firstHunk, "expected the code hunks");
+  assert(topLevel.textContent?.includes("whole-file note"));
+
+  // DOM order: top-level, then untethered, then code.
+  const kids = Array.from(content!.children);
+  assert(
+    kids.indexOf(topLevel) < kids.indexOf(outdated),
+    "top-level must precede untethered",
+  );
+  assert(
+    kids.indexOf(outdated) < kids.indexOf(firstHunk),
+    "untethered must precede the code",
+  );
+});
+
+Deno.test("diff: a binary file offers the control and shows its top-level comment", () => {
+  const doc = setupDom();
+  state.diffFiles = [
+    { Path: "img.png", Hunks: [], Binary: true, Renamed: false, OldPath: "" },
+  ];
+  state.commentsCache.set("img.png", [
+    comment({ id: "b1", content: "wrong asset" }),
+  ]);
+
+  renderDiff("img.png", {
+    actions: noopActions,
+    onAddComment: () => {},
+    onAddFileComment: () => {},
+  });
+
+  const block = doc.querySelector("#diff-content .top-level-comments");
+  assert(block, "expected the top-level block on a binary file");
+  assert(block.querySelector(".top-level-add-comment"), "expected the control");
+  assert(block.textContent?.includes("wrong asset"));
+
+  // the placeholder still shows and no diff lines are rendered.
+  assert(doc.querySelector("#diff-content .binary-placeholder"));
+  assertEquals(doc.querySelectorAll("#diff-content .diff-line").length, 0);
+});
+
+Deno.test("overview: a file's top-level comment shows read-only, no control", () => {
+  const doc = setupDom();
+  state.diffFiles = [
+    { Path: "img.png", Hunks: [], Binary: true, Renamed: false, OldPath: "" },
+  ];
+  state.commentsCache.set("img.png", [
+    comment({ id: "b1", content: "wrong asset" }),
+  ]);
+
+  // render the overview-only path for the file, as the overview does. The
+  // deno-dom element is cast to the DOM `Element` the render layer is typed
+  // against; it is structurally compatible at runtime.
+  const section = doc.querySelector("#diff-content") as unknown as HTMLElement;
+  renderFileHunks(section, "img.png", {
+    actions: noopActions,
+    onAddComment: () => {},
+    onAddFileComment: () => {},
+  }, true);
+
+  const block = doc.querySelector("#diff-content .top-level-comments");
+  assert(block, "expected the top-level block in the overview");
+  assert(block.textContent?.includes("wrong asset"));
+  assertEquals(
+    doc.querySelector("#diff-content .top-level-add-comment"),
+    null,
+    "overview shows no 'Add comment' control",
+  );
 });
