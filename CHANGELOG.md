@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Ctrl-f now opens an in-page find bar that searches the whole page and highlights every match, since WebKitGTK has no native find dialogue
+  - Type to search; step through matches with Enter/F3 (forward) or Shift+Enter/Shift+F3 (backward), wrapping around
+  - Search covers the diff, comment threads, and the file list; Escape closes the bar and restores the page
 - A command-line interface for AI agents to act on a review, so they no longer hand-edit the review state file
   - Read commands list active comments, show a comment's thread, and summarise the review, all as JSON
   - Agents resolve, reactivate, reply to and add comments, and unmark files they change, through safe commands

@@ -1209,3 +1209,81 @@ button.overview-file-name:hover {
 .line-content .hljs-strong {
     font-weight: 700;
 }
+
+/* In-page find. WebKitGTK does not wire up the native Ctrl-f, so the find bar is
+   our own: a small overlay pinned to the top-right of the window, mirroring a
+   browser's find bar. It searches the whole page (diff, file list, header). The
+   match highlights are `<mark>` spans the find render layer splices into the
+   page text. */
+#find-bar {
+    position: fixed;
+    top: 0.75rem;
+    right: 1.25rem;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.5rem;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    box-shadow: var(--shadow-md);
+}
+
+#find-input {
+    width: 16rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--color-border-input);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: var(--color-text);
+    background: var(--color-bg-primary);
+}
+
+#find-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+}
+
+.find-count {
+    min-width: 5rem;
+    text-align: right;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
+.find-nav,
+.find-close {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    line-height: 1;
+    padding: 0.2rem 0.5rem;
+    font-size: 1rem;
+}
+
+.find-nav:hover,
+.find-close:hover {
+    background: var(--color-hover-bg);
+}
+
+/* a search match in the diff text: a soft highlight that keeps the underlying
+   code colour readable. The active match is the brighter accent so the
+   prev/next step is visible as it scrolls into view. */
+.line-content .find-match,
+mark.find-match {
+    background: #fff1a8;
+    color: inherit;
+    border-radius: 2px;
+    padding: 0;
+}
+
+.line-content .find-match-active,
+mark.find-match-active {
+    background: #ffb300;
+    color: #0b0c0c;
+}

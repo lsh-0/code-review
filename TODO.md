@@ -51,12 +51,6 @@ effort: medium
 tags: frontend, ui, comments
 summary: Pressing Ctrl-z while typing in the add-comment box does not undo the edit
 ---
-title: Ctrl-f should search the page contents
-added: 2026-06-16
-effort: medium
-tags: frontend, ui
-summary: Pressing Ctrl-f does nothing; it should search the page for matches and highlight them
----
 title: Hide files matching ignore patterns, with a show-hidden toggle
 added: 2026-06-16
 updated: 2026-06-29

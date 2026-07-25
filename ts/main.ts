@@ -12,6 +12,13 @@ import { clampPaneWidth } from "./core/panes.ts";
 import { type CommentActions } from "./render/comments.ts";
 import { type DiffCallbacks, renderCombinedDiff } from "./render/hunks.ts";
 import { renderFileList } from "./render/filelist.ts";
+import {
+  closeFind,
+  findIsOpen,
+  findNext,
+  findPrev,
+  openFind,
+} from "./render/find.ts";
 import { groupers } from "./core/grouping.ts";
 import { renderOverview } from "./render/overview.ts";
 import { type MutationContext } from "./render/mutate.ts";
@@ -459,6 +466,33 @@ function setupEventHandlers(): void {
       if (byId("reply-comment-modal")?.classList.contains("active")) {
         hideReplyModal();
       }
+      // the find bar handles Escape from its own input; this closes it when the
+      // focus has moved elsewhere (e.g. after clicking into the diff).
+      if (findIsOpen()) {
+        closeFind();
+      }
+    }
+    // Ctrl-f opens the in-page find bar. WebKitGTK does not wire up the native
+    // browser find, so it is implemented in the render layer.
+    if (ev.ctrlKey && (key === "f" || key === "F")) {
+      ev.preventDefault();
+      openFind();
+      return;
+    }
+    // F3 / Shift+F3 step the find like a native browser: next / previous when the
+    // bar is open, and opening it (a "find again") when it is closed.
+    if (key === "F3") {
+      ev.preventDefault();
+      if (findIsOpen()) {
+        if (ev.shiftKey) {
+          findPrev();
+        } else {
+          findNext();
+        }
+      } else {
+        openFind();
+      }
+      return;
     }
     if (ev.ctrlKey) {
       switch (key) {
