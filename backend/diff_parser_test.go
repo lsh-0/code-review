@@ -231,6 +231,70 @@ Binary files a/image.png and b/image.png differ
 	}
 }
 
+func TestParseDiffPureRename(t *testing.T) {
+	given := `diff --git a/old.go b/new.go
+similarity index 100%
+rename from old.go
+rename to new.go
+`
+
+	files := ParseDiff(given)
+
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(files))
+	}
+
+	file := files[0]
+	if file.Path != "new.go" {
+		t.Errorf("expected new path 'new.go', got %q", file.Path)
+	}
+	if !file.Renamed {
+		t.Errorf("expected file to be flagged renamed")
+	}
+	if file.OldPath != "old.go" {
+		t.Errorf("expected old path 'old.go', got %q", file.OldPath)
+	}
+	if len(file.Hunks) != 0 {
+		t.Errorf("expected a pure rename to have 0 hunks, got %d", len(file.Hunks))
+	}
+}
+
+func TestParseDiffRenameWithEdits(t *testing.T) {
+	given := `diff --git a/old.go b/new.go
+similarity index 78%
+rename from old.go
+rename to new.go
+index c9e9e05..c6c0349 100644
+--- a/old.go
++++ b/new.go
+@@ -1,3 +1,3 @@
+ one
+-two
++two CHANGED
+ three
+`
+
+	files := ParseDiff(given)
+
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(files))
+	}
+
+	file := files[0]
+	if !file.Renamed {
+		t.Errorf("expected file to be flagged renamed")
+	}
+	if file.OldPath != "old.go" {
+		t.Errorf("expected old path 'old.go', got %q", file.OldPath)
+	}
+	if len(file.Hunks) != 1 {
+		t.Fatalf("expected a rename with edits to keep its 1 hunk, got %d", len(file.Hunks))
+	}
+	if len(file.Hunks[0].Lines) != 4 {
+		t.Errorf("expected 4 lines in the hunk, got %d", len(file.Hunks[0].Lines))
+	}
+}
+
 func TestParseDiffEmptyInput(t *testing.T) {
 	files := ParseDiff("")
 	if len(files) != 0 {

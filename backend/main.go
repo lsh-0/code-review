@@ -281,13 +281,20 @@ func (a *App) GetReviewInfo() (string, error) {
 // it is selected.
 func (a *App) GetDiffFiles() (string, error) {
 	type diffFileMeta struct {
-		Path   string `json:"Path"`
-		Binary bool   `json:"Binary"`
+		Path    string `json:"Path"`
+		OldPath string `json:"OldPath"`
+		Binary  bool   `json:"Binary"`
+		Renamed bool   `json:"Renamed"`
 	}
 
 	metas := make([]diffFileMeta, 0, len(a.diffFiles))
 	for _, diffFile := range a.diffFiles {
-		metas = append(metas, diffFileMeta{Path: diffFile.Path, Binary: diffFile.Binary})
+		metas = append(metas, diffFileMeta{
+			Path:    diffFile.Path,
+			OldPath: diffFile.OldPath,
+			Binary:  diffFile.Binary,
+			Renamed: diffFile.Renamed,
+		})
 	}
 
 	data, err := json.Marshal(metas)

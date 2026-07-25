@@ -16,6 +16,8 @@ export async function loadDiffFiles(): Promise<void> {
   state.diffFiles = metas.map((m) => ({
     Path: m.Path,
     Binary: m.Binary,
+    Renamed: m.Renamed,
+    OldPath: m.OldPath,
     Hunks: [],
   }));
   await loadAllComments();
@@ -71,6 +73,8 @@ export async function ensureFileDiff(filePath: string): Promise<void> {
     if (fetched) {
       file.Hunks = fetched.Hunks;
       file.Binary = fetched.Binary;
+      file.Renamed = fetched.Renamed;
+      file.OldPath = fetched.OldPath;
     }
   } catch {
     // leave the entry as-is; the caller renders the empty/binary path.

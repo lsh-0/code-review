@@ -30,14 +30,21 @@ type DiffHunk struct {
 }
 
 type DiffFile struct {
-	Path   string
-	Hunks  []DiffHunk
-	Binary bool
+	Path string
+	// the pre-rename path, set only when Renamed is true. Empty otherwise.
+	OldPath string
+	Hunks   []DiffHunk
+	Binary  bool
+	// whether git detected this file as a rename. A pure rename (100%
+	// similarity) carries no hunks; a rename with edits carries both Renamed and
+	// its hunks.
+	Renamed bool
 }
 
 var (
 	fileHeaderRegex = regexp.MustCompile(`^diff --git a/(.+) b/(.+)$`)
 	hunkHeaderRegex = regexp.MustCompile(`^@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@`)
+	renameFromRegex = regexp.MustCompile(`^rename from (.+)$`)
 )
 
 func ParseDiff(diffText string) []DiffFile {
@@ -67,6 +74,9 @@ func ParseDiff(diffText string) []DiffFile {
 			}
 		} else if currentFile != nil && strings.HasPrefix(line, "Binary files ") {
 			currentFile.Binary = true
+		} else if matches := renameFromRegex.FindStringSubmatch(line); currentFile != nil && matches != nil {
+			currentFile.Renamed = true
+			currentFile.OldPath = matches[1]
 		} else if currentFile != nil && hunkHeaderRegex.MatchString(line) {
 			if currentHunk != nil {
 				currentFile.Hunks = append(currentFile.Hunks, *currentHunk)

@@ -113,6 +113,21 @@ export function renderFileHunks(
     return;
   }
 
+  // a pure rename (git detected the rename and the file has no content change)
+  // would otherwise render a blank pane. A rename with edits keeps its hunks and
+  // falls through to the normal rendering below.
+  if (file.Renamed && file.Hunks.length === 0) {
+    parent.appendChild(
+      el("div", {
+        classes: ["rename-placeholder"],
+        text: file.OldPath
+          ? `renamed from ${file.OldPath}, no changes`
+          : "renamed, no changes",
+      }),
+    );
+    return;
+  }
+
   const ctx: ExpandContext = {
     filePath,
     actions: cb.actions,

@@ -95,7 +95,9 @@ export function diffFile(filePath: string): DiffFile | undefined {
 
 // whether a diff entry still needs its hunks fetched: a text file with no hunks
 // has not been loaded (or was reset by a refresh); a binary file never has
-// hunks.
+// hunks. A pure-rename file also has no hunks, but its fetch is free (the
+// backend serves it from the already-parsed diff, no git I/O), so it is not
+// special-cased here.
 export function diffFileNeedsFetch(file: DiffFile): boolean {
   return file.Hunks.length === 0 && !file.Binary;
 }

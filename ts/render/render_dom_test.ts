@@ -53,8 +53,8 @@ function adriftAnchor(): Anchor {
 Deno.test("file list: renders one item per diff file in order, with paths", () => {
   const doc = setupDom();
   state.diffFiles = [
-    { Path: "a.go", Hunks: [], Binary: false },
-    { Path: "b.go", Hunks: [], Binary: false },
+    { Path: "a.go", Hunks: [], Binary: false, Renamed: false, OldPath: "" },
+    { Path: "b.go", Hunks: [], Binary: false, Renamed: false, OldPath: "" },
   ];
 
   renderFileList(noopFileListCb);
@@ -69,7 +69,9 @@ Deno.test("file list: renders one item per diff file in order, with paths", () =
 
 Deno.test("file list: active status adds the has-comments-active pill class", () => {
   const doc = setupDom();
-  state.diffFiles = [{ Path: "a.go", Hunks: [], Binary: false }];
+  state.diffFiles = [
+    { Path: "a.go", Hunks: [], Binary: false, Renamed: false, OldPath: "" },
+  ];
   state.commentsCache.set("a.go", [
     comment({ status: "active", anchors: [goodAnchor(1)] }),
   ]);
@@ -101,7 +103,9 @@ Deno.test("file list: every file in a multi-file selection is marked active", ()
 
 Deno.test("file list: a marked file renders a checked checkbox", () => {
   const doc = setupDom();
-  state.diffFiles = [{ Path: "a.go", Hunks: [], Binary: false }];
+  state.diffFiles = [
+    { Path: "a.go", Hunks: [], Binary: false, Renamed: false, OldPath: "" },
+  ];
   state.markedFiles = new Set(["a.go"]);
 
   renderFileList(noopFileListCb);
@@ -116,8 +120,20 @@ Deno.test("file list: a marked file renders a checked checkbox", () => {
 Deno.test("file list: an active filter renders only matching files", () => {
   const doc = setupDom();
   state.diffFiles = [
-    { Path: "ts/render/modals.ts", Hunks: [], Binary: false },
-    { Path: "backend/main.go", Hunks: [], Binary: false },
+    {
+      Path: "ts/render/modals.ts",
+      Hunks: [],
+      Binary: false,
+      Renamed: false,
+      OldPath: "",
+    },
+    {
+      Path: "backend/main.go",
+      Hunks: [],
+      Binary: false,
+      Renamed: false,
+      OldPath: "",
+    },
   ];
   state.fileFilter = "modal";
 
@@ -131,7 +147,15 @@ Deno.test("file list: an active filter renders only matching files", () => {
 
 Deno.test("file list: the overview entry stays visible under a filter that matches no file", () => {
   const doc = setupDom();
-  state.diffFiles = [{ Path: "backend/main.go", Hunks: [], Binary: false }];
+  state.diffFiles = [
+    {
+      Path: "backend/main.go",
+      Hunks: [],
+      Binary: false,
+      Renamed: false,
+      OldPath: "",
+    },
+  ];
   state.fileFilter = "no-such-file";
 
   renderFileList(noopFileListCb);
@@ -143,8 +167,8 @@ Deno.test("file list: the overview entry stays visible under a filter that match
 Deno.test("file list: grouping by mark renders headings, unmarked group first", () => {
   const doc = setupDom();
   state.diffFiles = [
-    { Path: "a.go", Hunks: [], Binary: false },
-    { Path: "b.go", Hunks: [], Binary: false },
+    { Path: "a.go", Hunks: [], Binary: false, Renamed: false, OldPath: "" },
+    { Path: "b.go", Hunks: [], Binary: false, Renamed: false, OldPath: "" },
   ];
   state.markedFiles = new Set(["a.go"]);
   state.fileGrouping = "marked";
@@ -164,7 +188,9 @@ Deno.test("file list: grouping by mark renders headings, unmarked group first", 
 
 Deno.test("file list: a flat list (grouping none) renders no group heading", () => {
   const doc = setupDom();
-  state.diffFiles = [{ Path: "a.go", Hunks: [], Binary: false }];
+  state.diffFiles = [
+    { Path: "a.go", Hunks: [], Binary: false, Renamed: false, OldPath: "" },
+  ];
 
   renderFileList(noopFileListCb);
 
@@ -173,7 +199,9 @@ Deno.test("file list: a flat list (grouping none) renders no group heading", () 
 
 Deno.test("file list: the overview footer entry is always rendered", () => {
   const doc = setupDom();
-  state.diffFiles = [{ Path: "a.go", Hunks: [], Binary: false }];
+  state.diffFiles = [
+    { Path: "a.go", Hunks: [], Binary: false, Renamed: false, OldPath: "" },
+  ];
   renderFileList(noopFileListCb);
   const entry = doc.querySelector("#overview-footer .overview-item");
   assert(entry);
@@ -183,6 +211,8 @@ Deno.test("file list: the overview footer entry is always rendered", () => {
 const sampleFile: DiffFile = {
   Path: "a.go",
   Binary: false,
+  Renamed: false,
+  OldPath: "",
   Hunks: [
     {
       OldStart: 1,
@@ -438,7 +468,9 @@ Deno.test("outdatedCommentsBlock: null when no root comment is outdated", () => 
 
 Deno.test("diff: a binary file renders a placeholder, no lines", () => {
   const doc = setupDom();
-  state.diffFiles = [{ Path: "img.png", Hunks: [], Binary: true }];
+  state.diffFiles = [
+    { Path: "img.png", Hunks: [], Binary: true, Renamed: false, OldPath: "" },
+  ];
   state.commentsCache.set("img.png", []);
 
   renderDiff("img.png", { actions: noopActions, onAddComment: () => {} });
@@ -447,4 +479,44 @@ Deno.test("diff: a binary file renders a placeholder, no lines", () => {
   assert(placeholder);
   assertEquals(placeholder.textContent, "binary file, cannot diff");
   assertEquals(doc.querySelectorAll("#diff-content .diff-line").length, 0);
+});
+
+Deno.test("diff: a pure rename renders a placeholder naming the old path", () => {
+  const doc = setupDom();
+  state.diffFiles = [
+    {
+      Path: "new.go",
+      Hunks: [],
+      Binary: false,
+      Renamed: true,
+      OldPath: "old.go",
+    },
+  ];
+  state.commentsCache.set("new.go", []);
+
+  renderDiff("new.go", { actions: noopActions, onAddComment: () => {} });
+
+  const placeholder = doc.querySelector("#diff-content .rename-placeholder");
+  assert(placeholder);
+  assertEquals(placeholder.textContent, "renamed from old.go, no changes");
+  assertEquals(doc.querySelectorAll("#diff-content .diff-line").length, 0);
+});
+
+Deno.test("diff: a rename with edits renders its hunks, not the placeholder", () => {
+  const doc = setupDom();
+  state.diffFiles = [{
+    ...sampleFile,
+    Path: "new.go",
+    Renamed: true,
+    OldPath: "old.go",
+  }];
+  state.commentsCache.set("new.go", []);
+
+  renderDiff("new.go", { actions: noopActions, onAddComment: () => {} });
+
+  assertEquals(
+    doc.querySelectorAll("#diff-content .rename-placeholder").length,
+    0,
+  );
+  assert(doc.querySelectorAll("#diff-content .diff-line").length > 0);
 });

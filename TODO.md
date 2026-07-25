@@ -104,19 +104,6 @@ Pre-existing behaviour, unchanged by the Deno frontend rewrite; noticed
 during that rewrite's webview check. The diff lines scale via the --zoom
 custom property but the comment font sizes are fixed.
 ---
-title: Empty diff pane gives no reason for renamed or binary files
-added: 2026-06-20
-updated: 2026-06-29
-effort: medium
-tags: frontend, ui, diff
-summary: Pure-rename (no content change) files render a blank diff pane with no indication of why — should show "renamed, no changes"
-
-The binary case is now handled: `ts/render/hunks.ts` renders a "binary
-file, cannot diff" placeholder (commit `ab7f9ca`). Pure-rename files
-still render empty — the `DiffFile` type carries no `Renamed` field, so
-rename detection has to be added before a "renamed, no changes"
-placeholder can be shown.
----
 title: Ctrl-scrolling in the file list resizes the wrong pane via zoom
 added: 2026-06-23
 effort: low

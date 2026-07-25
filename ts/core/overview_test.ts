@@ -33,7 +33,13 @@ function hunk(lines: DiffLine[]): DiffHunk {
 }
 
 function file(hunks: DiffHunk[]): DiffFile {
-  return { Path: "f.go", Hunks: hunks, Binary: false };
+  return {
+    Path: "f.go",
+    Hunks: hunks,
+    Binary: false,
+    Renamed: false,
+    OldPath: "",
+  };
 }
 
 Deno.test("getLineContext: window spans the anchored line and its neighbours", () => {

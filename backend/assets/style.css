@@ -702,7 +702,8 @@ button.overview-file-name:hover {
     overflow-wrap: anywhere;
 }
 
-.binary-placeholder {
+.binary-placeholder,
+.rename-placeholder {
     padding: 2rem;
     text-align: center;
     color: var(--color-hunk-text);

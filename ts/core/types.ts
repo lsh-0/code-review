@@ -66,6 +66,11 @@ export interface DiffFile {
   Path: string;
   Hunks: DiffHunk[];
   Binary: boolean;
+  // whether git detected this file as a rename. A pure rename (100% similarity)
+  // carries no hunks; a rename with edits carries both `Renamed` and its hunks.
+  Renamed: boolean;
+  // the pre-rename path, set only when `Renamed` is true; empty otherwise.
+  OldPath: string;
 }
 
 // a file path paired with its comments, as returned by `GetCommentedFiles`.
@@ -100,6 +105,9 @@ export interface WorkingTreeStatus {
 export interface DiffFileMeta {
   Path: string;
   Binary: boolean;
+  Renamed: boolean;
+  // the pre-rename path, set only when `Renamed` is true; empty otherwise.
+  OldPath: string;
 }
 
 // the result shape of `GetFileLines`: a range of context lines plus the file's

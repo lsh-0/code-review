@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Building from source now needs [Deno](https://deno.com) instead of GopherJS and a pinned Go 1.19 (build-time only)
   - The Go code is now a single module rather than three
 - The binary-file placeholder now reads "binary file, cannot diff", explaining the empty pane rather than just naming it
+- A pure rename (no content change) now shows a "renamed from `<old path>`, no changes" placeholder instead of a blank diff pane
 
 ### Fixed
 
