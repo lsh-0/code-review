@@ -3,9 +3,11 @@ package main
 import (
 	"code-review/model"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -23,7 +25,7 @@ func TestApp_CommentStatusChanges(t *testing.T) {
 	content := "test comment"
 	lineNumber := 10
 
-	_, err := app.AddComment(filePath, content, lineNumber, []string{"before", "line", "after"}, 1)
+	_, err := app.AddComment(filePath, content, lineNumber)
 	if err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
@@ -243,7 +245,7 @@ func TestApp_UpdateComment(t *testing.T) {
 	originalContent := "original comment"
 	lineNumber := 10
 
-	_, err := app.AddComment(filePath, originalContent, lineNumber, nil, 0)
+	_, err := app.AddComment(filePath, originalContent, lineNumber)
 	if err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
@@ -280,10 +282,10 @@ func TestApp_GetCommentedFiles(t *testing.T) {
 	}
 
 	// comments on a.go and c.go only; b.go stays comment-free and must be omitted.
-	if _, err := app.AddComment("c.go", "third", 3, nil, 0); err != nil {
+	if _, err := app.AddComment("c.go", "third", 3); err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
-	if _, err := app.AddComment("a.go", "first", 1, nil, 0); err != nil {
+	if _, err := app.AddComment("a.go", "first", 1); err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
 
@@ -574,7 +576,7 @@ func TestApp_MutationResultShape(t *testing.T) {
 
 	// adding a comment returns a result anchored at its line, carrying the file's
 	// comments and an active status.
-	raw, err := app.AddComment("a.go", "note", 7, nil, 0)
+	raw, err := app.AddComment("a.go", "note", 7)
 	if err != nil {
 		t.Fatalf("AddComment failed: %v", err)
 	}
@@ -773,7 +775,7 @@ func TestApp_RecomputeDiff_ReanchorsCommentOnShift(t *testing.T) {
 	// comment on "charlie" (new-side line 3), capturing its context window. The
 	// added lines run alpha(1) bravo(2) charlie(3) delta(4); the centre of the
 	// 3-line window is charlie.
-	if _, err := app.AddComment("app.go", "look at charlie", 3, []string{"bravo", "charlie", "delta"}, 1); err != nil {
+	if _, err := app.AddComment("app.go", "look at charlie", 3); err != nil {
 		t.Fatalf("AddComment: %v", err)
 	}
 
@@ -790,6 +792,174 @@ func TestApp_RecomputeDiff_ReanchorsCommentOnShift(t *testing.T) {
 	}
 	if actual := comment.CurrentLineNumber(); actual != 5 {
 		t.Errorf("expected the comment to re-anchor at line 5, got %d", actual)
+	}
+}
+
+// a comment on an unchanged line outside every hunk — the expanded-context
+// case — captures a good anchor at creation and survives a recompute that
+// changes the file elsewhere. This pins the reported bug end to end: under the
+// diff-only corpus the comment was born adrift and re-orphaned on every
+// reconcile.
+func TestApp_RecomputeDiff_KeepsCommentOutsideHunks(t *testing.T) {
+	tmpDir := setupTestRepo(t)
+	base, err := GetCurrentBranch(tmpDir)
+	if err != nil {
+		t.Fatalf("get base branch: %v", err)
+	}
+
+	// a 20-line file on base, so the branch edit produces one small hunk at the
+	// top and leaves the tail far outside the diff.
+	lines := make([]string, 20)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line-%02d", i+1)
+	}
+	commitFile(t, tmpDir, "big.go", strings.Join(lines, "\n")+"\n", "add big.go")
+
+	checkout := exec.Command("git", "checkout", "-b", "feature")
+	checkout.Dir = tmpDir
+	if err := checkout.Run(); err != nil {
+		t.Fatalf("create feature branch: %v", err)
+	}
+	lines[0] = "line-01-changed"
+	commitFile(t, tmpDir, "big.go", strings.Join(lines, "\n")+"\n", "edit line 1")
+	head, _ := GetCurrentBranch(tmpDir)
+
+	app := &App{
+		review:    model.NewReview(tmpDir, head, base),
+		repoPath:  tmpDir,
+		dataDir:   t.TempDir(),
+		statePath: filepath.Join(t.TempDir(), "state.json"),
+		userName:  "Test User",
+	}
+	if err := app.RecomputeDiff(); err != nil {
+		t.Fatalf("initial RecomputeDiff: %v", err)
+	}
+
+	// line 15 is far outside the single top-of-file hunk (which spans lines
+	// 1..4 with context): the revealed-line case.
+	if _, err := app.AddComment("big.go", "note on the tail", 15); err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+
+	comment := app.review.GetFileDiff("big.go").Comments[0]
+	if comment.IsOutdated() {
+		t.Fatal("expected a comment on a line outside every hunk to capture a good anchor")
+	}
+	if len(comment.LastGoodContext()) == 0 {
+		t.Fatal("expected a non-empty captured context for an outside-hunk comment")
+	}
+
+	// change the top of the file again: the blob changes, forcing a re-anchor
+	// pass over the unchanged tail.
+	lines[1] = "line-02-changed"
+	commitFile(t, tmpDir, "big.go", strings.Join(lines, "\n")+"\n", "edit line 2")
+
+	if err := app.RecomputeDiff(); err != nil {
+		t.Fatalf("RecomputeDiff after second edit: %v", err)
+	}
+
+	if comment.IsOutdated() {
+		t.Fatal("expected the outside-hunk comment to survive the recompute")
+	}
+	if actual := comment.CurrentLineNumber(); actual != 15 {
+		t.Errorf("expected the comment to stay at line 15, got %d", actual)
+	}
+}
+
+// the GUI payloads carry backend-derived placement fields — line, outdated,
+// last good context — never raw anchor histories, and they agree with the
+// CLI's derivation for the same comment.
+func TestApp_GUICommentDerivedFields(t *testing.T) {
+	review := model.NewReview("/some/repo/path", "feature", "main")
+	file := review.AddFileDiff("a.go")
+
+	anchored := file.AddCommentWithContext("anchored", 7, "Test User", "blob-1", []string{"before", "the line", "after"}, 1)
+	reply := file.AddReply(anchored.ID, "a reply", "Agent")
+	topLevel := file.AddComment("whole-file note", 0, "Test User")
+
+	// an outdated comment: a good creation anchor, then an adrift one.
+	outdated := file.AddCommentWithContext("lost", 3, "Test User", "blob-1", []string{"x", "y", "z"}, 1)
+	outdated.Anchors = append(outdated.Anchors, model.Anchor{Blob: "blob-2"})
+
+	views := toGUIComments(file.Comments)
+	if len(views) != 4 {
+		t.Fatalf("expected 4 views, got %d", len(views))
+	}
+	byID := map[string]guiComment{}
+	for _, v := range views {
+		byID[v.ID] = v
+	}
+
+	if v := byID[anchored.ID]; v.Line != 7 || v.Outdated || len(v.Context) != 3 {
+		t.Errorf("anchored: expected line 7, not outdated, 3 context lines; got %+v", v)
+	}
+	if v := byID[reply.ID]; v.Line != 0 || v.Outdated || v.ParentID != anchored.ID {
+		t.Errorf("reply: expected line 0, not outdated, parented; got %+v", v)
+	}
+	if v := byID[topLevel.ID]; v.Line != 0 || v.Outdated {
+		t.Errorf("top-level: expected line 0 and not outdated; got %+v", v)
+	}
+	if v := byID[outdated.ID]; !v.Outdated || len(v.Context) != 3 {
+		t.Errorf("outdated: expected outdated with the last good context; got %+v", v)
+	}
+
+	// no anchors on the wire: the marshalled payload has no "anchors" key.
+	raw, err := json.Marshal(views)
+	if err != nil {
+		t.Fatalf("marshal views: %v", err)
+	}
+	if strings.Contains(string(raw), "anchors") {
+		t.Error("expected no anchor history in the GUI payload")
+	}
+
+	// GUI and CLI agree on the derived placement of the same comment.
+	cliView := toCommentView("a.go", anchored)
+	guiView := byID[anchored.ID]
+	if cliView.Line != guiView.Line || cliView.Outdated != guiView.Outdated {
+		t.Errorf("expected GUI and CLI to derive the same placement: CLI %d/%v, GUI %d/%v",
+			cliView.Line, cliView.Outdated, guiView.Line, guiView.Outdated)
+	}
+}
+
+// the corpus builder drops a path whose body cannot be read from `blobs` too,
+// so the reconciler leaves that file's comments untouched instead of appending
+// adrift anchors on a transient failure. A binary file is dropped without a
+// body read.
+func TestApp_ReanchorCorpus_SkipsUnreadableAndBinary(t *testing.T) {
+	app := &App{
+		review: model.NewReview("/some/repo/path", "feature", "main"),
+		diffFiles: []DiffFile{
+			{Path: "img.png", Binary: true},
+			{Path: "a.go"},
+		},
+	}
+	app.fileCache = newFileContentCache(func(rev, path string) (string, error) {
+		if path == "broken.go" {
+			return "", fmt.Errorf("unreadable")
+		}
+		return "alpha\nbravo\n", nil
+	})
+
+	blobs := map[string]string{"a.go": "sha-a", "broken.go": "sha-b", "img.png": "sha-i"}
+	corpus := app.reanchorCorpus([]string{"a.go", "broken.go", "img.png"}, blobs)
+
+	if _, present := corpus["a.go"]; !present {
+		t.Error("expected a readable file in the corpus")
+	}
+	if len(corpus["a.go"]) != 2 {
+		t.Errorf("expected the full 2-line body in the corpus, got %d lines", len(corpus["a.go"]))
+	}
+	if _, present := corpus["broken.go"]; present {
+		t.Error("expected an unreadable file to be absent from the corpus")
+	}
+	if _, present := blobs["broken.go"]; present {
+		t.Error("expected an unreadable file to be dropped from blobs, leaving its comments untouched")
+	}
+	if _, present := blobs["img.png"]; present {
+		t.Error("expected a binary file to be dropped from blobs")
+	}
+	if _, present := blobs["a.go"]; !present {
+		t.Error("expected a readable file to stay in blobs")
 	}
 }
 
@@ -819,7 +989,7 @@ func TestApp_RecomputeDiff_OutdatesCommentOnDeletedLine(t *testing.T) {
 		t.Fatalf("initial RecomputeDiff: %v", err)
 	}
 
-	if _, err := app.AddComment("app.go", "look at charlie", 3, []string{"bravo", "charlie", "delta"}, 1); err != nil {
+	if _, err := app.AddComment("app.go", "look at charlie", 3); err != nil {
 		t.Fatalf("AddComment: %v", err)
 	}
 

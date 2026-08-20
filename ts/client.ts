@@ -41,8 +41,6 @@ interface BoundApp {
     path: string,
     content: string,
     lineNumber: number,
-    context: string[],
-    offset: number,
   ): Promise<string>;
   AddReviewComment(content: string): Promise<string>;
   AddFileComment(path: string, content: string): Promise<string>;
@@ -230,16 +228,16 @@ export const browseFile = (path: string): Promise<void> =>
 export const openDiffToolForFile = (path: string): Promise<void> =>
   callVoid("OpenDiffToolForFile", (a) => a.OpenDiffToolForFile(path));
 
+// the backend captures the anchor's context window itself, from the same file
+// content the reconciler matches against, so the caller sends only the target.
 export const addComment = (
   path: string,
   content: string,
   lineNumber: number,
-  context: string[],
-  offset: number,
 ): Promise<CommentMutationResult> =>
   callJSON(
     "AddComment",
-    (a) => a.AddComment(path, content, lineNumber, context, offset),
+    (a) => a.AddComment(path, content, lineNumber),
   );
 
 export const addReviewComment = (

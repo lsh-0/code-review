@@ -10,7 +10,9 @@ import { diffFile, diffFileNeedsFetch, state } from "./state.ts";
 // fetch the diff metadata into `state.diffFiles`, then prime comments and marked
 // files. `GetDiffFiles` returns no hunks, so each entry's hunks are fetched
 // lazily on first selection; clearing first forces a refresh to re-fetch rather
-// than serve stale hunks.
+// than serve stale hunks. The per-file window state is dropped wholesale: a
+// refresh collapses every file back to its default windows, recomputed from
+// the refreshed hunks and reconciled comment placements.
 export async function loadDiffFiles(): Promise<void> {
   const metas = await api.getDiffFiles();
   state.diffFiles = metas.map((m) => ({
@@ -20,6 +22,7 @@ export async function loadDiffFiles(): Promise<void> {
     OldPath: m.OldPath,
     Hunks: [],
   }));
+  state.fileViews.clear();
   await loadAllComments();
   await loadMarkedFiles();
 }

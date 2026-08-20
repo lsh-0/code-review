@@ -2,21 +2,16 @@
   {
     "comments": [
       {
-        "anchors": [
-          {
-            "blob": "blob-a",
-            "context": [
-              "before",
-              "the line",
-              "after"
-            ],
-            "line_number": 7,
-            "offset": 1
-          }
-        ],
         "author": "Test User",
         "content": "a note",
-        "id": "f4d0f0ae8fb2ec37",
+        "context": [
+          "before",
+          "the line",
+          "after"
+        ],
+        "id": "06515462f52640a3",
+        "line": 7,
+        "outdated": false,
         "status": "active"
       }
     ],

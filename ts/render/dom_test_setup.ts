@@ -44,10 +44,12 @@ export function setupDom(): HTMLDocument {
   state.currentUser = "";
   state.overviewActive = false;
   state.diffFiles = [];
+  state.fileViews = new Map();
   state.commentsCache = new Map();
   state.markedFiles = new Set();
   state.fileFilter = "";
   state.fileGrouping = "none";
+  state.workingTreeStatus = null;
 
   return doc;
 }

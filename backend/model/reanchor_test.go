@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 )
@@ -148,20 +149,52 @@ func TestReanchorCommentsAdriftBelowThreshold(t *testing.T) {
 	}
 }
 
-func TestReanchorCommentsContextOutsideDiffGoesAdrift(t *testing.T) {
+func TestReanchorCommentsContextGoneFromFileGoesAdrift(t *testing.T) {
 	context := []string{"needle-1", "needle-2", "needle-3"}
 	given := Anchor{Blob: "blob-1", LineNumber: 2, Context: context}
 	review, comment := reviewWithAnchoredComment("a.go", given)
 
-	// the file changed, but none of the comment's context appears in the diff's
-	// new-side lines (it lives in unchanged code outside the diff window): adrift.
+	// the file changed and none of the comment's context appears anywhere in its
+	// full content: the content is genuinely gone, so the comment goes adrift.
 	review.ReanchorComments(
 		map[string]string{"a.go": "blob-2"},
 		map[string][]DiffLineRef{"a.go": {{"unrelated-a", 1}, {"unrelated-b", 2}}},
 	)
 
 	if !comment.IsOutdated() {
-		t.Error("expected a comment whose context is absent from the diff to be outdated")
+		t.Error("expected a comment whose context is gone from the file to be outdated")
+	}
+}
+
+// the corpus is the file's full content at the head revision, not just the
+// lines a diff would show — so a window living in an unchanged region far from
+// any change is still reachable, and the comment re-anchors rather than
+// orphaning. This pins the widened corpus contract.
+func TestReanchorCommentsMatchesOutsideAnyDiffRegion(t *testing.T) {
+	context := []string{"deep-1", "deep-2", "deep-3"}
+	given := Anchor{Blob: "blob-1", LineNumber: 42, Offset: 1, Context: context}
+	review, comment := reviewWithAnchoredComment("a.go", given)
+
+	// a 100-line corpus; the context sits at lines 51..53, far from the top
+	// where a typical hunk would be.
+	lines := make([]DiffLineRef, 100)
+	for i := range lines {
+		lines[i] = DiffLineRef{Content: fmt.Sprintf("filler-%03d", i+1), LineNumber: i + 1}
+	}
+	lines[50] = DiffLineRef{Content: "deep-1", LineNumber: 51}
+	lines[51] = DiffLineRef{Content: "deep-2", LineNumber: 52}
+	lines[52] = DiffLineRef{Content: "deep-3", LineNumber: 53}
+
+	review.ReanchorComments(
+		map[string]string{"a.go": "blob-2"},
+		map[string][]DiffLineRef{"a.go": lines},
+	)
+
+	if comment.IsOutdated() {
+		t.Fatal("expected the comment to re-anchor against the full-file corpus")
+	}
+	if comment.CurrentLineNumber() != 52 {
+		t.Errorf("expected the comment at line 52 (offset 1 into the window), got %d", comment.CurrentLineNumber())
 	}
 }
 

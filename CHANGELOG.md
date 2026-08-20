@@ -48,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The binary-file placeholder now reads "binary file, cannot diff", explaining the empty pane rather than just naming it
 - A pure rename (no content change) now shows a "renamed from `<old path>`, no changes" placeholder instead of a blank diff pane
 - Background checks for outside changes now run every five seconds and pause while a banner is up, rather than polling constantly
+- Expanded hunk context is now modelled as growable "windows": a distant comment gets its own small window instead of
+  requiring everything in between to be revealed, windows merge once the gap between them narrows, and expansion collapses
+  back to its default extent on refresh rather than persisting stale reveals
 
 ### Fixed
 
@@ -56,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ctrl-zoom now scales comment text along with the diff code, instead of leaving comments at a fixed size
   - Covers comment threads in every context (line-anchored, top-level, outdated), the add-comment controls, and the compose/edit modal
   - Application chrome — header, file list, comment-count badges — stays fixed, so zoom scales the review surface, not the navigation
+- Commenting on a line revealed by expanding a hunk no longer marks the comment orphaned (red border, yellow background)
+  - The comment now anchors normally and stays visible in its own window when you return to the file
 
 ## [0.7.1] - 2026-06-18
 

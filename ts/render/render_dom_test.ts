@@ -1,29 +1,23 @@
 // DOM integration tests: render known state into a real (deno-dom) tree and
 // assert the produced structure — nodes, classes, attributes, ordering — rather
 // than markup strings. This exercises the render path that pure-core tests
-// cannot. Run with --allow-read --allow-net (deno-dom WASM init). It asserts our
-// rendering produces the right tree, NOT that WebKit paints it (renderer quirks
-// stay a manual concern).
+// cannot: rendering is a function of state, so each test seeds `state` and
+// asserts the tree. Run with --allow-read --allow-net (deno-dom WASM init). It
+// asserts our rendering produces the right tree, NOT that WebKit paints it
+// (renderer quirks stay a manual concern).
 
 import { assert, assertEquals } from "@std/assert";
 import { setupDom } from "./dom_test_setup.ts";
 import { renderFileList } from "./filelist.ts";
 import { renderCombinedDiff, renderDiff, renderFileHunks } from "./hunks.ts";
 import { applyMutation } from "./mutate.ts";
-import { type CommentActions, outdatedCommentsBlock } from "./comments.ts";
-import { lastGoodContext } from "../core/comments.ts";
-import { state } from "./state.ts";
-import type { Anchor, Comment, DiffFile } from "../core/types.ts";
+import { outdatedCommentsBlock } from "./comments.ts";
+import { rerenderFileRegion } from "./view.ts";
+import { closeFind, openFind } from "./find.ts";
+import { type FileViewState, state } from "./state.ts";
+import type { Comment, DiffFile } from "../core/types.ts";
 import { LineAdded, LineContext } from "../core/types.ts";
-
-const noopActions: CommentActions = {
-  onReply: () => {},
-  onEdit: () => {},
-  onResolve: () => {},
-  onIgnore: () => {},
-  onReactivate: () => {},
-  onDelete: () => {},
-};
+import { defaultWindows } from "../core/windows.ts";
 
 const noopFileListCb = {
   onSelectFile: () => {},
@@ -36,18 +30,32 @@ function comment(over: Partial<Comment>): Comment {
     author: "alice",
     content: "a note",
     status: "active",
+    line: 0,
+    outdated: false,
     ...over,
   };
 }
 
-// a located anchor at `line` carrying a context window, so it is not adrift.
-function goodAnchor(line: number, context = ["ctx"]): Anchor {
-  return { blob: "x", line_number: line, offset: 0, context };
-}
-
-// an adrift anchor: no context, so its `line_number` is not meaningful.
-function adriftAnchor(): Anchor {
-  return { blob: "y", line_number: 0 };
+// a ready-made file view: windows computed from the given file and comment
+// lines, with the context lines in `lines` pre-fetched — so rendering needs no
+// bridge and the test is purely state-in/tree-out.
+function seedFileView(
+  file: DiffFile,
+  commentLines: number[],
+  totalLines: number,
+  lines: Record<number, string> = {},
+): FileViewState {
+  const view: FileViewState = {
+    windows: defaultWindows(file.Hunks, commentLines, totalLines),
+    fileLines: new Map(
+      Object.entries(lines).map(([n, c]) => [Number(n), c]),
+    ),
+    totalLines,
+    fetchFailed: false,
+    fetching: false,
+  };
+  state.fileViews.set(file.Path, view);
+  return view;
 }
 
 Deno.test("file list: renders one item per diff file in order, with paths", () => {
@@ -73,7 +81,7 @@ Deno.test("file list: active status adds the has-comments-active pill class", ()
     { Path: "a.go", Hunks: [], Binary: false, Renamed: false, OldPath: "" },
   ];
   state.commentsCache.set("a.go", [
-    comment({ status: "active", anchors: [goodAnchor(1)] }),
+    comment({ status: "active", line: 1 }),
   ]);
 
   renderFileList(noopFileListCb);
@@ -242,13 +250,9 @@ Deno.test("diff: renders a hunk header and one row per line", () => {
   const doc = setupDom();
   state.diffFiles = [structuredClone(sampleFile)];
   state.commentsCache.set("a.go", []);
-  state.currentFile = "a.go";
+  state.selectedFiles = ["a.go"];
 
-  renderDiff("a.go", {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  });
+  renderDiff("a.go");
 
   const header = doc.querySelector("#diff-content .hunk-header");
   assert(header);
@@ -263,11 +267,7 @@ Deno.test("diff: an added line carries the added class and a data-line", () => {
   state.diffFiles = [structuredClone(sampleFile)];
   state.commentsCache.set("a.go", []);
 
-  renderDiff("a.go", {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  });
+  renderDiff("a.go");
 
   const added = doc.querySelector(
     "#diff-content .diff-line.added",
@@ -280,14 +280,10 @@ Deno.test("diff: a commented line embeds a thread anchored by data-line", () => 
   const doc = setupDom();
   state.diffFiles = [structuredClone(sampleFile)];
   state.commentsCache.set("a.go", [
-    comment({ id: "x", anchors: [goodAnchor(3)], content: "look here" }),
+    comment({ id: "x", line: 3, content: "look here" }),
   ]);
 
-  renderDiff("a.go", {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  });
+  renderDiff("a.go");
 
   const thread = doc.querySelector(
     '#diff-content .comment-thread[data-line="3"]',
@@ -300,6 +296,190 @@ Deno.test("diff: a commented line embeds a thread anchored by data-line", () => 
     '#diff-content .diff-line[data-line="3"]',
   ) as unknown as HTMLElement;
   assert(row.classList.contains("commented"));
+});
+
+Deno.test("windows: the sample hunk renders with both boundary affordances disabled", () => {
+  const doc = setupDom();
+  // the hunk starts at line 1 (nothing above) and its short trailing context
+  // says it reached end-of-file (nothing below): both rows present, disabled.
+  state.diffFiles = [structuredClone(sampleFile)];
+  state.commentsCache.set("a.go", []);
+
+  renderDiff("a.go");
+
+  const rows = doc.querySelectorAll("#diff-content .expand-row");
+  assertEquals(rows.length, 2);
+  for (const row of rows) {
+    assert(
+      (row as unknown as HTMLElement).classList.contains("disabled"),
+      "expected the boundary affordances disabled",
+    );
+  }
+});
+
+// a file whose single hunk sits mid-file, so both directions have hidden lines.
+const midFile: DiffFile = {
+  Path: "mid.go",
+  Binary: false,
+  Renamed: false,
+  OldPath: "",
+  Hunks: [
+    {
+      OldStart: 10,
+      OldLines: 3,
+      NewStart: 10,
+      NewLines: 4,
+      Lines: [
+        { Type: LineContext, Content: "ctx 10", OldLineNo: 10, NewLineNo: 10 },
+        { Type: LineAdded, Content: "added 11", OldLineNo: 0, NewLineNo: 11 },
+        { Type: LineContext, Content: "ctx 12", OldLineNo: 11, NewLineNo: 12 },
+        { Type: LineContext, Content: "ctx 13", OldLineNo: 12, NewLineNo: 13 },
+      ],
+    },
+  ],
+};
+
+Deno.test("windows: a comment outside the hunk renders as its own island with its thread", () => {
+  const doc = setupDom();
+  state.diffFiles = [structuredClone(midFile)];
+  state.commentsCache.set("mid.go", [
+    comment({ id: "x", line: 25, content: "tail note" }),
+  ]);
+  // the island [22..28] pre-fetched, so the render is pure state-in/tree-out.
+  seedFileView(midFile, [25], 40, {
+    22: "l22",
+    23: "l23",
+    24: "l24",
+    25: "l25",
+    26: "l26",
+    27: "l27",
+    28: "l28",
+  });
+
+  renderDiff("mid.go");
+
+  // two windows render: the hunk and the island.
+  assertEquals(doc.querySelectorAll("#diff-content .diff-hunk").length, 2);
+
+  // the island's lines are ordinary context rows with correct numbering.
+  const islandRow = doc.querySelector(
+    '#diff-content .diff-line[data-line="25"]',
+  ) as unknown as HTMLElement;
+  assert(islandRow, "expected the commented island line to render");
+  assert(islandRow.textContent?.includes("l25"));
+
+  // the comment thread sits against its line inside the island, not untethered.
+  const thread = doc.querySelector(
+    '#diff-content .comment-thread[data-line="25"]',
+  );
+  assert(thread, "expected the thread against the island line");
+  assert(thread.textContent?.includes("tail note"));
+  assertEquals(
+    doc.querySelectorAll("#diff-content .outdated-comments").length,
+    0,
+  );
+
+  // the island does not run to the hunk or the file edges: line 20 is hidden.
+  assertEquals(
+    doc.querySelector('#diff-content .diff-line[data-line="20"]'),
+    null,
+  );
+});
+
+Deno.test("windows: a grown window renders its revealed context from state", () => {
+  const doc = setupDom();
+  state.diffFiles = [structuredClone(midFile)];
+  state.commentsCache.set("mid.go", []);
+  // a view grown upward beyond the hunk: window [5..13] with lines fetched.
+  const view = seedFileView(midFile, [], 40, {
+    5: "l5",
+    6: "l6",
+    7: "l7",
+    8: "l8",
+    9: "l9",
+  });
+  view.windows = [{ start: 5, end: 13 }];
+
+  renderDiff("mid.go");
+
+  // revealed context rows precede the hunk header's lines, numbered correctly.
+  const row = doc.querySelector(
+    '#diff-content .diff-line[data-line="5"]',
+  ) as unknown as HTMLElement;
+  assert(row, "expected the revealed line to render from state");
+  assert(row.textContent?.includes("l5"));
+  // the hunk's own lines still render.
+  assert(doc.querySelector('#diff-content .diff-line[data-line="11"]'));
+});
+
+Deno.test("windows: two hunks in one merged window hide the lower header", () => {
+  const doc = setupDom();
+  // two hunks separated by a single hidden line (14): the default windows merge.
+  const file: DiffFile = {
+    Path: "m.go",
+    Binary: false,
+    Renamed: false,
+    OldPath: "",
+    Hunks: [
+      structuredClone(midFile.Hunks[0]),
+      {
+        OldStart: 14,
+        OldLines: 2,
+        NewStart: 15,
+        NewLines: 2,
+        Lines: [
+          {
+            Type: LineContext,
+            Content: "ctx 15",
+            OldLineNo: 14,
+            NewLineNo: 15,
+          },
+          { Type: LineAdded, Content: "added 16", OldLineNo: 0, NewLineNo: 16 },
+        ],
+      },
+    ],
+  };
+  state.diffFiles = [file];
+  state.commentsCache.set("m.go", []);
+  seedFileView(file, [], 40, { 14: "l14" });
+
+  renderDiff("m.go");
+
+  // one window: one .diff-hunk container with both hunk headers, lower hidden.
+  assertEquals(doc.querySelectorAll("#diff-content .diff-hunk").length, 1);
+  const headers = doc.querySelectorAll("#diff-content .hunk-header");
+  assertEquals(headers.length, 2);
+  assert(
+    !(headers[0] as unknown as HTMLElement).classList.contains("joined-hidden"),
+  );
+  assert(
+    (headers[1] as unknown as HTMLElement).classList.contains("joined-hidden"),
+  );
+
+  // the single hidden line between them renders as context.
+  assert(doc.querySelector('#diff-content .diff-line[data-line="14"]'));
+});
+
+Deno.test("windows: an unplaceable anchored comment falls back to the untethered block", () => {
+  const doc = setupDom();
+  state.diffFiles = [structuredClone(midFile)];
+  state.commentsCache.set("mid.go", [
+    comment({
+      id: "x",
+      line: 99,
+      content: "beyond the end",
+      context: ["was here"],
+    }),
+  ]);
+  // total is known (40), so the line-99 island is clamped away entirely.
+  seedFileView(midFile, [99], 40);
+
+  renderDiff("mid.go");
+
+  const block = doc.querySelector("#diff-content .outdated-comments");
+  assert(block, "expected the untethered block for an unshowable comment");
+  assert(block.textContent?.includes("beyond the end"));
+  assert(block.textContent?.includes("was here"));
 });
 
 // a second file whose single hunk shares line number 3 with `sampleFile`, so a
@@ -340,11 +520,7 @@ Deno.test("combined diff: a single selected file renders sectionless, like the s
   state.commentsCache.set("a.go", []);
   state.selectedFiles = ["a.go"];
 
-  renderCombinedDiff(["a.go"], {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  });
+  renderCombinedDiff(["a.go"]);
 
   // no section wrapper for one file: the hunks sit directly under #diff-content.
   assertEquals(doc.querySelectorAll(".diff-file-section").length, 0);
@@ -358,11 +534,7 @@ Deno.test("combined diff: two selected files render two labelled sections in ord
   state.commentsCache.set("b.go", []);
   state.selectedFiles = ["a.go", "b.go"];
 
-  renderCombinedDiff(["a.go", "b.go"], {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  });
+  renderCombinedDiff(["a.go", "b.go"]);
 
   const sections = Array.from(
     doc.querySelectorAll("#diff-content .diff-file-section"),
@@ -387,29 +559,21 @@ Deno.test("combined diff: two selected files render two labelled sections in ord
   }
 });
 
-Deno.test("combined diff: a mutation on one file's line patches only that file's section", () => {
+Deno.test("combined diff: a mutation on one file re-renders only that file's section", () => {
   const doc = setupDom();
   state.diffFiles = [structuredClone(sampleFile), structuredClone(sampleFileB)];
   state.commentsCache.set("a.go", []);
   state.commentsCache.set("b.go", []);
   state.selectedFiles = ["a.go", "b.go"];
 
-  renderCombinedDiff(["a.go", "b.go"], {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  });
+  renderCombinedDiff(["a.go", "b.go"]);
 
   // a comment lands on line 3 of b.go — a line number that also exists in a.go.
   applyMutation({
     file_path: "b.go",
     line_number: 3,
-    comments: [comment({ id: "x", anchors: [goodAnchor(3)], content: "in b" })],
+    comments: [comment({ id: "x", line: 3, content: "in b" })],
     file_status: "active",
-  }, {
-    actions: noopActions,
-    rebuildOverview: () => {},
-    onAddFileComment: () => {},
   });
 
   const sectionA = doc.querySelector('.diff-file-section[data-file="a.go"]');
@@ -435,22 +599,107 @@ Deno.test("combined diff: a mutation on one file's line patches only that file's
   );
 });
 
+Deno.test("mutation: a re-render preserves the file's grown window state", () => {
+  const doc = setupDom();
+  state.diffFiles = [structuredClone(midFile)];
+  state.commentsCache.set("mid.go", []);
+  state.selectedFiles = ["mid.go"];
+  // grown upward: revealed lines 7..9 above the hunk.
+  const view = seedFileView(midFile, [], 40, { 7: "l7", 8: "l8", 9: "l9" });
+  view.windows = [{ start: 7, end: 13 }];
+
+  renderDiff("mid.go");
+  assert(doc.querySelector('#diff-content .diff-line[data-line="7"]'));
+
+  // a comment mutation on the revealed line re-renders the region from state.
+  applyMutation({
+    file_path: "mid.go",
+    line_number: 8,
+    comments: [comment({ id: "x", line: 8, content: "on revealed" })],
+    file_status: "active",
+  });
+
+  // the grown context is still shown (window state survived the re-render)
+  // and the new thread sits against its revealed line.
+  assert(
+    doc.querySelector('#diff-content .diff-line[data-line="7"]'),
+    "expected the grown window to survive the mutation re-render",
+  );
+  const thread = doc.querySelector(
+    '#diff-content .comment-thread[data-line="8"]',
+  );
+  assert(thread, "expected the thread against the revealed line");
+  assert(thread.textContent?.includes("on revealed"));
+});
+
+Deno.test("regions: re-rendering a file that is no longer shown changes nothing", () => {
+  const doc = setupDom();
+  state.diffFiles = [structuredClone(sampleFile), structuredClone(sampleFileB)];
+  state.commentsCache.set("a.go", []);
+  state.commentsCache.set("b.go", []);
+  state.selectedFiles = ["b.go"];
+
+  renderDiff("b.go");
+  const before = (doc.querySelector("#diff-content") as unknown as HTMLElement)
+    .innerHTML;
+
+  // a late async result for a.go (navigated away): its region render is a no-op.
+  rerenderFileRegion("a.go");
+
+  const after = (doc.querySelector("#diff-content") as unknown as HTMLElement)
+    .innerHTML;
+  assertEquals(after, before);
+});
+
+Deno.test("find: highlights are re-applied after a mutation re-renders the region", () => {
+  const doc = setupDom();
+  state.diffFiles = [structuredClone(sampleFile)];
+  state.commentsCache.set("a.go", []);
+  state.selectedFiles = ["a.go"];
+  renderDiff("a.go");
+
+  openFind();
+  const input = doc.querySelector("#find-input") as unknown as HTMLInputElement;
+  assert(input, "expected the find bar input");
+  input.value = "main";
+  input.dispatchEvent(new Event("input"));
+  assert(
+    doc.querySelectorAll(".find-match").length > 0,
+    "expected matches before the mutation",
+  );
+
+  // the mutation replaces the region's DOM; the highlights must come back.
+  applyMutation({
+    file_path: "a.go",
+    line_number: 3,
+    comments: [comment({ id: "x", line: 3, content: "note" })],
+    file_status: "active",
+  });
+
+  assert(
+    doc.querySelectorAll("#diff-content .find-match").length > 0,
+    "expected highlights re-applied to the re-rendered region",
+  );
+  closeFind();
+});
+
 Deno.test("outdatedCommentsBlock: one item per outdated root with its last context", () => {
   setupDom();
   const context = ["line one", "line two", "line three"];
   const outdated = comment({
     id: "x",
     content: "stale note",
-    anchors: [goodAnchor(3, context), adriftAnchor()],
+    outdated: true,
+    context,
   });
   const live = comment({
     id: "y",
     content: "live note",
-    anchors: [goodAnchor(5)],
+    line: 5,
   });
   const comments = [outdated, live];
 
-  const block = outdatedCommentsBlock("a.go", comments, noopActions);
+  const block = outdatedCommentsBlock("a.go", comments);
   assert(block, "expected a block when a root comment is outdated");
   assertEquals(block.getAttribute("data-outdated"), "a.go");
 
@@ -459,16 +708,14 @@ Deno.test("outdatedCommentsBlock: one item per outdated root with its last conte
   const item = items[0] as unknown as HTMLElement;
   assertEquals(item.getAttribute("data-comment"), "x");
 
-  // the pseudo-hunk has one outdated-line per lastGoodContext line.
-  const expectedContext = lastGoodContext(outdated);
-  assertEquals(expectedContext, context);
+  // the pseudo-hunk has one outdated-line per stored context line.
   const hunk = item.querySelector(".outdated-hunk");
   assert(hunk, "expected an outdated-hunk");
   const lines = hunk.querySelectorAll(".outdated-line");
-  assertEquals(lines.length, expectedContext.length);
+  assertEquals(lines.length, context.length);
   assertEquals(
     Array.from(lines).map((l) => l.textContent),
-    expectedContext,
+    context,
   );
 
   // each outdated line also carries the diff-line class.
@@ -481,10 +728,10 @@ Deno.test("outdatedCommentsBlock: one item per outdated root with its last conte
 Deno.test("outdatedCommentsBlock: null when no root comment is outdated", () => {
   setupDom();
   const comments = [
-    comment({ id: "a", anchors: [goodAnchor(3)] }),
+    comment({ id: "a", line: 3 }),
     comment({ id: "b", parent_id: "a", content: "reply" }),
   ];
-  assertEquals(outdatedCommentsBlock("a.go", comments, noopActions), null);
+  assertEquals(outdatedCommentsBlock("a.go", comments), null);
 });
 
 Deno.test("diff: a binary file renders a placeholder, no lines", () => {
@@ -494,11 +741,7 @@ Deno.test("diff: a binary file renders a placeholder, no lines", () => {
   ];
   state.commentsCache.set("img.png", []);
 
-  renderDiff("img.png", {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  });
+  renderDiff("img.png");
 
   const placeholder = doc.querySelector("#diff-content .binary-placeholder");
   assert(placeholder);
@@ -519,11 +762,7 @@ Deno.test("diff: a pure rename renders a placeholder naming the old path", () =>
   ];
   state.commentsCache.set("new.go", []);
 
-  renderDiff("new.go", {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  });
+  renderDiff("new.go");
 
   const placeholder = doc.querySelector("#diff-content .rename-placeholder");
   assert(placeholder);
@@ -534,18 +773,14 @@ Deno.test("diff: a pure rename renders a placeholder naming the old path", () =>
 Deno.test("diff: a rename with edits renders its hunks, not the placeholder", () => {
   const doc = setupDom();
   state.diffFiles = [{
-    ...sampleFile,
+    ...structuredClone(sampleFile),
     Path: "new.go",
     Renamed: true,
     OldPath: "old.go",
   }];
   state.commentsCache.set("new.go", []);
 
-  renderDiff("new.go", {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  });
+  renderDiff("new.go");
 
   assertEquals(
     doc.querySelectorAll("#diff-content .rename-placeholder").length,
@@ -559,11 +794,7 @@ Deno.test("diff: the single-file view shows a top-of-file 'Add comment' control"
   state.diffFiles = [structuredClone(sampleFile)];
   state.commentsCache.set("a.go", []);
 
-  renderDiff("a.go", {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  });
+  renderDiff("a.go");
 
   const block = doc.querySelector("#diff-content .top-level-comments");
   assert(block, "expected a top-level block at the top of the file");
@@ -585,17 +816,14 @@ Deno.test("diff: a top-level comment renders at the top, before untethered and c
     comment({ id: "top", content: "whole-file note" }),
     comment({
       id: "old",
-      anchors: [goodAnchor(5), adriftAnchor()],
+      outdated: true,
+      context: ["ctx"],
       content: "gone",
     }),
-    comment({ id: "live", anchors: [goodAnchor(3)], content: "look here" }),
+    comment({ id: "live", line: 3, content: "look here" }),
   ]);
 
-  renderDiff("a.go", {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  });
+  renderDiff("a.go");
 
   const content = doc.querySelector("#diff-content");
   const topLevel = content?.querySelector(".top-level-comments");
@@ -627,11 +855,7 @@ Deno.test("diff: a binary file offers the control and shows its top-level commen
     comment({ id: "b1", content: "wrong asset" }),
   ]);
 
-  renderDiff("img.png", {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  });
+  renderDiff("img.png");
 
   const block = doc.querySelector("#diff-content .top-level-comments");
   assert(block, "expected the top-level block on a binary file");
@@ -656,11 +880,7 @@ Deno.test("overview: a file's top-level comment shows read-only, no control", ()
   // deno-dom element is cast to the DOM `Element` the render layer is typed
   // against; it is structurally compatible at runtime.
   const section = doc.querySelector("#diff-content") as unknown as HTMLElement;
-  renderFileHunks(section, "img.png", {
-    actions: noopActions,
-    onAddComment: () => {},
-    onAddFileComment: () => {},
-  }, true);
+  renderFileHunks(section, "img.png", true);
 
   const block = doc.querySelector("#diff-content .top-level-comments");
   assert(block, "expected the top-level block in the overview");

@@ -762,25 +762,10 @@ button.overview-file-name:hover {
     background: var(--color-bg-subtle);
 }
 
-/* a between-hunks gap revealed to completion makes the two hunks continuous:
-   close the separating margin and flatten the bordered/rounded edges where
-   they meet so the two boxes read as one block. */
-.diff-hunk.joined-above {
-    margin-top: 0;
-    border-top: none;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
-}
-
-.diff-hunk.joined-below {
-    margin-bottom: 0;
-    border-bottom: none;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-}
-
-/* the lower hunk's header is hidden once its gap is fully revealed: the two
-   hunks are now one continuous block and the @@ boundary no longer applies. */
+/* two hunks merged into one window render as one continuous block: the lower
+   hunk's header stays in the DOM (navigation, tests) but the @@ boundary no
+   longer applies visually. The window container itself provides the single
+   border, so no join classes are needed on the containers. */
 .hunk-header.joined-hidden {
     display: none;
 }

@@ -46,10 +46,15 @@ func wireFixtures() (map[string]string, error) {
 		userName:  "Test User",
 	}
 
-	// a comment mutation result, with one active comment carrying context. The
-	// captured window is [before, the line, after], so the anchored line is at
-	// offset 1.
-	mutationRaw, err := app.AddComment("a.go", "a note", 7, []string{"before", "the line", "after"}, 1)
+	// the backend captures the comment's context window from the file body, so
+	// the fixture app serves a fixed body instead of shelling out to git.
+	app.fileCache = newFileContentCache(func(rev, path string) (string, error) {
+		return "l1\nl2\nl3\nl4\nl5\nl6\nthe line\nl8\nl9\nl10\n", nil
+	})
+
+	// a comment mutation result, with one active comment carrying the context
+	// window the backend captured around line 7 ("the line").
+	mutationRaw, err := app.AddComment("a.go", "a note", 7)
 	if err != nil {
 		return nil, fmt.Errorf("AddComment: %w", err)
 	}
@@ -75,14 +80,14 @@ func wireFixtures() (map[string]string, error) {
 	// so the shape is marshalled here from the same struct it uses — grounding
 	// the fixture in the real type rather than faking the JSON.
 	commentedFiles := []struct {
-		Path     string           `json:"path"`
-		Comments []*model.Comment `json:"comments"`
+		Path     string       `json:"path"`
+		Comments []guiComment `json:"comments"`
 	}{
 		{
 			Path: "a.go",
-			Comments: []*model.Comment{
+			Comments: toGUIComments([]*model.Comment{
 				model.NewCommentWithContext("a note", 7, "Test User", "blob-a", []string{"before", "the line", "after"}, 1),
-			},
+			}),
 		},
 	}
 	commentedBytes, err := json.Marshal(commentedFiles)

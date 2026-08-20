@@ -170,7 +170,9 @@ function buildFindBar(): FindState {
 
 // re-run the search for the input's current term: clear the old highlights,
 // re-highlight, select the first match (if any), and update the counter.
-function runSearch(): void {
+// `scrollToActive` false skips the scroll-into-view, for re-runs the reviewer
+// did not ask for (a region re-render must not yank the page to a match).
+function runSearch(scrollToActive = true): void {
   if (!active_find) {
     return;
   }
@@ -178,8 +180,22 @@ function runSearch(): void {
   const term = findTerm();
   active_find.marks = highlightMatches(term);
   active_find.activeIndex = active_find.marks.length > 0 ? 0 : -1;
-  applyActive();
+  applyActive(scrollToActive);
   updateCount();
+}
+
+// re-apply the current highlights after a region re-render replaced part of
+// the page. Marks inside the replaced region are gone with it; the term
+// persists in the bar, so the whole search re-runs against the fresh content
+// without scrolling. A no-op when find is closed.
+export function reapplyFind(): void {
+  if (!active_find) {
+    return;
+  }
+  // marks whose nodes were discarded with the region cannot be unwrapped;
+  // keep only the ones still in the document for clearHighlights to restore.
+  active_find.marks = active_find.marks.filter((m) => m.parentNode !== null);
+  runSearch(false);
 }
 
 // the find input's current term. `?? ""` guards the deno-dom test shim, whose
@@ -202,9 +218,9 @@ function step(delta: number): void {
   updateCount();
 }
 
-// reflect `activeIndex` onto the marks: clear the active class everywhere, set it
-// on the current mark, and scroll that mark into view.
-function applyActive(): void {
+// reflect `activeIndex` onto the marks: clear the active class everywhere, set
+// it on the current mark, and (unless suppressed) scroll that mark into view.
+function applyActive(scroll = true): void {
   if (!active_find) {
     return;
   }
@@ -214,8 +230,10 @@ function applyActive(): void {
   const current = active_find.marks[active_find.activeIndex];
   if (current) {
     current.classList.add(activeMatchClass);
-    // guarded: the deno-dom test shim does not implement scrollIntoView.
-    current.scrollIntoView?.({ block: "center", inline: "nearest" });
+    if (scroll) {
+      // guarded: the deno-dom test shim does not implement scrollIntoView.
+      current.scrollIntoView?.({ block: "center", inline: "nearest" });
+    }
   }
 }
 

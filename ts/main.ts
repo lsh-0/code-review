@@ -1,20 +1,17 @@
-// the frontend entry point: assembles the render modules, wires selection,
-// refresh, the comment-mutation callbacks, the modals, the external-change
-// banner, and the zoom/keyboard/wheel handlers, then loads the initial view.
-// Bundled to `assets/review.js` and loaded by `index.html`.
+// the frontend entry point: wires the toolbar, modals, zoom, keyboard and
+// wheel handlers, and the external-change banners, then loads the initial
+// view. Selection and region rendering live in render/view.ts; this module is
+// only the page-level wiring. Bundled to `assets/review.js` and loaded by
+// `index.html`.
 
 import * as api from "./client.ts";
-import type { WorkingTreeStatus } from "./core/types.ts";
-import { isFileDirty, workingTreeBannerText } from "./core/worktree.ts";
 import {
   type ChangeSource,
   reviewChangedBannerText,
 } from "./core/notification.ts";
 import { byId, el, requireId } from "./dom.ts";
-import { state } from "./render/state.ts";
+import { currentFile, state } from "./render/state.ts";
 import { clampPaneWidth } from "./core/panes.ts";
-import { type CommentActions } from "./render/comments.ts";
-import { type DiffCallbacks, renderCombinedDiff } from "./render/hunks.ts";
 import { renderFileList } from "./render/filelist.ts";
 import {
   closeFind,
@@ -24,210 +21,34 @@ import {
   openFind,
 } from "./render/find.ts";
 import { groupers } from "./core/grouping.ts";
-import { renderOverview } from "./render/overview.ts";
-import { type MutationContext } from "./render/mutate.ts";
 import {
-  deleteComment,
   hideCommentModal,
   hideEditCommentModal,
   hideReplyModal,
-  ignoreComment,
-  initModals,
-  reactivateComment,
-  resolveComment,
   saveComment,
   saveReply,
-  showCommentModal,
-  showEditCommentModal,
-  showFileCommentModal,
-  showReplyModal,
-  showReviewCommentModal,
   updateComment,
 } from "./render/modals.ts";
 import {
-  ensureFileDiffs,
   loadCommentedFiles,
-  loadComments,
   loadDiffFiles,
   recomputeDiff,
-  reloadReview,
 } from "./render/load.ts";
-import { nextSelection } from "./core/selection.ts";
+import {
+  fileListCallbacks,
+  renderFileDirtyBanner,
+  renderSelection,
+  renderWorkingTreeBanner,
+} from "./render/view.ts";
+import { renderOverview } from "./render/overview.ts";
 
 const zoomMin = 0.5;
 const zoomMax = 3.0;
 const zoomStep = 0.1;
 
-// the most recently fetched working-tree status, cached so the per-file dirty
-// check on file selection reads it without a fresh git call. Refreshed on load
-// and on every full refresh; null until the first fetch succeeds.
-let workingTreeStatus: WorkingTreeStatus | null = null;
-
-// the comment actions, wired once: each opens a modal or calls a mutation
-// handler. Threaded into every comment thread the render layer builds.
-const actions: CommentActions = {
-  onReply: (f, id) => showReplyModal(f, id),
-  onEdit: (f, id, content) => showEditCommentModal(f, id, content),
-  onResolve: (f, id) => void resolveComment(f, id),
-  onIgnore: (f, id) => void ignoreComment(f, id),
-  onReactivate: (f, id) => void reactivateComment(f, id),
-  onDelete: (f, id) => void deleteComment(f, id),
-};
-
-const diffCallbacks: DiffCallbacks = {
-  actions,
-  onAddComment: (f, lineNo) => showCommentModal(f, lineNo),
-  onAddFileComment: (f) => showFileCommentModal(f),
-};
-
-// rebuild the overview wholesale (used after a mutation while the overview is
-// active, since it has no diff state to preserve).
-function rebuildOverview(): void {
-  void loadCommentedFiles().then(({ reviewComments, files }) => {
-    void renderOverview(reviewComments, files, overviewCallbacks);
-    renderFileList(fileListCallbacks);
-  });
-}
-
-const mutationCtx: MutationContext = {
-  actions,
-  rebuildOverview,
-  onAddFileComment: (f) => showFileCommentModal(f),
-};
-
-const fileListCallbacks = {
-  onSelectFile: (f: string, additive = false) => void selectFile(f, additive),
-  onSelectOverview: () => void selectOverview(),
-};
-
-const overviewCallbacks = {
-  diff: diffCallbacks,
-  actions,
-  // selecting a file from the overview always opens just that file.
-  onSelectFile: (f: string) => void selectFile(f),
-  onAddReviewComment: () => showReviewCommentModal(),
-};
-
-// select a file and render the diff pane from already-loaded state — no diff
-// recompute, no git. A plain click (additive false) selects just `filePath`; a
-// ctrl/cmd-click (additive true) toggles it in or out of the current selection.
-// A plain re-click of a single already-selected file is a no-op so scroll and
-// expanded context survive.
-async function selectFile(filePath: string, additive = false): Promise<void> {
-  const alreadyShown = !state.overviewActive &&
-    state.selectedFiles.length === 1 && state.selectedFiles[0] === filePath;
-  if (!additive && alreadyShown) {
-    return;
-  }
-  state.overviewActive = false;
-  state.selectedFiles = nextSelection(state.selectedFiles, filePath, additive);
-  await renderSelection();
-}
-
-// render the current file selection into the diff pane: load every selected
-// file's hunks and comments, mark the file list, label the sticky header, and
-// render the combined (or single-file) view. Resets scroll, since the selection
-// has changed.
-async function renderSelection(): Promise<void> {
-  const selected = state.selectedFiles;
-
-  const diffView = byId("diff-view");
-  if (diffView) {
-    diffView.scrollTop = 0;
-  }
-
-  setActiveItem(selected);
-  labelSelection(selected);
-  renderFileDirtyBanner(state.currentFile);
-
-  await ensureFileDiffs(selected);
-  await Promise.all(selected.map((p) => loadComments(p)));
-  renderCombinedDiff(selected, diffCallbacks);
-}
-
-// label the sticky pane header for the selection: a single file shows its path
-// and a top browse button (the pre-multi-select look); several files show a
-// count, with each section carrying its own filename header and browse button.
-function labelSelection(selected: string[]): void {
-  const nameEl = byId("current-file-name");
-  if (selected.length === 1) {
-    if (nameEl) {
-      nameEl.textContent = selected[0];
-    }
-    renderBrowseLink(selected[0]);
-    return;
-  }
-  if (nameEl) {
-    nameEl.textContent = `${selected.length} files`;
-  }
-  removeBrowseLink();
-}
-
-// show the review overview, reloading state first so it reflects an agent's
-// edits.
-async function selectOverview(): Promise<void> {
-  state.overviewActive = true;
-  state.currentFile = "";
-
-  const diffView = byId("diff-view");
-  if (diffView) {
-    diffView.scrollTop = 0;
-  }
-  setActiveOverview();
-  const nameEl = byId("current-file-name");
-  if (nameEl) {
-    nameEl.textContent = "Review overview";
-  }
-  removeBrowseLink();
-  renderFileDirtyBanner("");
-
-  await reloadReview();
-  const { reviewComments, files } = await loadCommentedFiles();
-  await renderOverview(reviewComments, files, overviewCallbacks);
-}
-
-// mark every file-list item in `selected` active, clearing the rest.
-function setActiveItem(selected: string[]): void {
-  const set = new Set(selected);
-  for (const item of document.querySelectorAll<HTMLElement>(".file-item")) {
-    const path = item.dataset.path;
-    item.classList.toggle("active", path !== undefined && set.has(path));
-  }
-}
-
-function setActiveOverview(): void {
-  for (const item of document.querySelectorAll<HTMLElement>(".file-item")) {
-    item.classList.toggle("active", item.classList.contains("overview-item"));
-  }
-}
-
-// render (or replace) the "browse" link in the file header that opens the
-// selected file externally.
-function renderBrowseLink(filePath: string): void {
-  const header = byId("current-file-header");
-  if (!header) {
-    return;
-  }
-  removeBrowseLink();
-  const link = document.createElement("button");
-  link.id = "browse-link";
-  link.classList.add("browse-link");
-  link.textContent = "browse";
-  link.setAttribute("title", "Open this file in the preferred application");
-  link.addEventListener("click", () => {
-    void api.browseFile(filePath).catch(() =>
-      globalThis.alert(`Could not open ${filePath}`)
-    );
-  });
-  header.appendChild(link);
-}
-
-function removeBrowseLink(): void {
-  byId("browse-link")?.remove();
-}
-
 // recompute the diff and reload state, then re-render the file list and the
-// visible surface.
+// visible surface. Window state collapses to defaults (loadDiffFiles clears
+// it), per the refresh rule.
 async function performFullRefresh(): Promise<void> {
   await recomputeDiff();
   await loadDiffFiles();
@@ -235,7 +56,7 @@ async function performFullRefresh(): Promise<void> {
   renderFileList(fileListCallbacks);
   if (state.overviewActive) {
     const { reviewComments, files } = await loadCommentedFiles();
-    await renderOverview(reviewComments, files, overviewCallbacks);
+    await renderOverview(reviewComments, files);
     return;
   }
 
@@ -279,59 +100,18 @@ function applyZoom(): void {
   document.documentElement.style.setProperty("--zoom", String(state.zoomLevel));
 }
 
-// fetch the working-tree status, cache it, and render the page-wide banner.
+// fetch the working-tree status into state and render the page-wide banner.
 // Called on load and after every full refresh, since a refresh may follow a
 // new commit that changed what is dirty. A fetch failure leaves the previous
 // state and banner untouched rather than clearing a still-valid warning.
 async function refreshWorkingTreeStatus(): Promise<void> {
   try {
-    workingTreeStatus = await api.getWorkingTreeStatus();
+    state.workingTreeStatus = await api.getWorkingTreeStatus();
   } catch {
     return;
   }
   renderWorkingTreeBanner();
-  renderFileDirtyBanner(state.currentFile);
-}
-
-// render the page-wide green banner from the cached status: shown when the tree
-// is dirty, hidden when clean.
-//
-// The banner's visibility drives the working-tree watcher's suspension, since
-// this banner is that watcher's alert. Raising it suspends the watcher, which
-// then reports only the return to a clean tree; that return hides the banner
-// here and resumes normal reporting. Both calls are idempotent, so re-rendering
-// an unchanged banner costs nothing.
-function renderWorkingTreeBanner(): void {
-  const banner = byId("working-tree-banner");
-  const text = byId("working-tree-banner-text");
-  if (!banner || !text || !workingTreeStatus) {
-    return;
-  }
-  const message = workingTreeBannerText(workingTreeStatus);
-  if (message === null) {
-    banner.classList.add("hidden");
-    void api.resumeWatch("worktree");
-    return;
-  }
-  text.textContent = message;
-  banner.classList.remove("hidden");
-  void api.suspendWatch("worktree");
-}
-
-// render the per-file orange banner for the currently viewed file: shown when
-// that file has uncommitted changes, hidden otherwise (and on the overview,
-// where `filePath` is empty). The difftool button is wired once in
-// `setupEventHandlers`; this only toggles visibility and points it at the file.
-function renderFileDirtyBanner(filePath: string): void {
-  const banner = byId("file-dirty-banner");
-  if (!banner) {
-    return;
-  }
-  if (filePath !== "" && isFileDirty(workingTreeStatus, filePath)) {
-    banner.classList.remove("hidden");
-  } else {
-    banner.classList.add("hidden");
-  }
+  renderFileDirtyBanner(currentFile());
 }
 
 // which changes are pending on the refresh banner. A watcher suspends once it
@@ -571,7 +351,7 @@ function setupEventHandlers(): void {
     () => void copyStatePrompt(),
   );
   byId("file-dirty-difftool-btn")?.addEventListener("click", () => {
-    const filePath = state.currentFile;
+    const filePath = currentFile();
     if (filePath === "") {
       return;
     }
@@ -643,8 +423,6 @@ async function loadReviewInfo(): Promise<void> {
 }
 
 async function initialize(): Promise<void> {
-  // the modals and mutation patching share one context.
-  initModals(mutationCtx);
   // ensure the structural elements exist before wiring (throws early if not).
   requireId("diff-content");
 
