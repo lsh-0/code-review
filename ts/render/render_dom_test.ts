@@ -88,9 +88,9 @@ Deno.test("file list: active status adds the has-comments-active pill class", ()
 Deno.test("file list: every file in a multi-file selection is marked active", () => {
   const doc = setupDom();
   state.diffFiles = [
-    { Path: "a.go", Hunks: [], Binary: false },
-    { Path: "b.go", Hunks: [], Binary: false },
-    { Path: "c.go", Hunks: [], Binary: false },
+    { Path: "a.go", Hunks: [], Binary: false, Renamed: false, OldPath: "" },
+    { Path: "b.go", Hunks: [], Binary: false, Renamed: false, OldPath: "" },
+    { Path: "c.go", Hunks: [], Binary: false, Renamed: false, OldPath: "" },
   ];
   state.selectedFiles = ["a.go", "c.go"];
 
@@ -307,6 +307,8 @@ Deno.test("diff: a commented line embeds a thread anchored by data-line", () => 
 const sampleFileB: DiffFile = {
   Path: "b.go",
   Binary: false,
+  Renamed: false,
+  OldPath: "",
   Hunks: [
     {
       OldStart: 1,

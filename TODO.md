@@ -77,16 +77,15 @@ Distribution is local-build only today. The Wails cross-platform guide
 turning a pushed tag into a release with the binaries attached is the
 companion piece. Relates to the AppImage item, which covers Linux.
 ---
-title: Detect new commits on the source branch and offer a refresh banner
-added: 2026-06-18
-effort: medium
-tags: backend, frontend, ui
-summary: Watch the source-branch HEAD for new commits and show the refresh banner, as the state-file watcher already does for external review edits
+title: Scale comment text with Ctrl+zoom like the diff text
+added: 2026-06-20
+effort: low
+tags: frontend, ui
+summary: Ctrl+zoom scales the diff code but leaves comment text at a fixed size; comments should scale with the same --zoom property
 
-The existing watcher polls only the review-state JSON, so an agent's
-comment edits raise the banner but a new commit does not — the reviewer
-sees no prompt that the diff is now stale. A separate poll of the
-source-branch HEAD would close that gap and reuse the same banner.
+Pre-existing behaviour, unchanged by the Deno frontend rewrite; noticed
+during that rewrite's webview check. The diff lines scale via the --zoom
+custom property but the comment font sizes are fixed.
 ---
 title: Ctrl-scrolling in the file list resizes the wrong pane via zoom
 added: 2026-06-23

@@ -10,7 +10,9 @@ import { state } from "./state.ts";
 // the structural shell from `index.html` that the render layer targets by id.
 const SHELL = `
 <div id="app">
-  <div id="review-changed-banner" class="banner hidden"></div>
+  <div id="review-changed-banner" class="banner hidden">
+    <span id="review-changed-banner-text"></span>
+  </div>
   <div id="file-list">
     <div id="files"></div>
     <div id="overview-footer"></div>

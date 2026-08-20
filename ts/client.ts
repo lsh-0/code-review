@@ -58,6 +58,8 @@ interface BoundApp {
   DeleteComment(path: string, commentID: string): Promise<string>;
   RecomputeDiff(): Promise<void>;
   ReloadReview(): Promise<void>;
+  SuspendWatch(watcher: string): Promise<void>;
+  ResumeWatch(watcher: string): Promise<void>;
 }
 
 interface WailsGlobal {
@@ -294,3 +296,12 @@ export const recomputeDiff = (): Promise<void> =>
 
 export const reloadReview = (): Promise<void> =>
   callVoid("ReloadReview", (a) => a.ReloadReview());
+
+// stop a watcher polling because its alert is now on screen, and resume it once
+// the reviewer has cleared that alert. The frontend drives both because it owns
+// the banners, so it is what knows when an alert is up.
+export const suspendWatch = (watcher: string): Promise<void> =>
+  callVoid("SuspendWatch", (a) => a.SuspendWatch(watcher));
+
+export const resumeWatch = (watcher: string): Promise<void> =>
+  callVoid("ResumeWatch", (a) => a.ResumeWatch(watcher));

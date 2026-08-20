@@ -34,10 +34,63 @@ type App struct {
 	// from a separate goroutine.
 	savedMu        sync.Mutex
 	lastSavedMtime time.Time
+
+	// which watchers are currently suspended, keyed by the names below. A
+	// watcher suspends once it has raised its alert and resumes when the
+	// reviewer clears it, so a change already reported is not reported again.
+	// Set from the frontend (which owns the banners, so it knows when an alert
+	// is up) and read from the watcher goroutines, hence the guard.
+	watchMu        sync.Mutex
+	suspendedWatch map[string]bool
+
+	// the last commit SHA seen on the source branch, guarded alongside the
+	// suspend flags because `ResumeWatch` resets it from the frontend while the
+	// poller reads it.
+	commitSeen commitBaseline
 }
 
+// the watcher names `SuspendWatch`/`ResumeWatch` accept, one per poller.
+const (
+	watchNameState    = "state"
+	watchNameCommits  = "commits"
+	watchNameWorktree = "worktree"
+)
+
 func NewApp() *App {
-	return &App{}
+	return &App{suspendedWatch: map[string]bool{}}
+}
+
+// stop a watcher polling because its alert is now raised. Idempotent: suspending
+// an already-suspended watcher is a no-op.
+func (a *App) SuspendWatch(watcher string) {
+	a.watchMu.Lock()
+	defer a.watchMu.Unlock()
+	if a.suspendedWatch == nil {
+		a.suspendedWatch = map[string]bool{}
+	}
+	a.suspendedWatch[watcher] = true
+}
+
+// resume a watcher because the reviewer has cleared its alert, by refreshing or
+// dismissing it. The commit watcher's baseline is dropped so its next read
+// re-seeds: the reviewer has either absorbed that commit (refresh) or declined
+// it (dismiss), and in both cases re-reporting it would be wrong.
+func (a *App) ResumeWatch(watcher string) {
+	a.watchMu.Lock()
+	defer a.watchMu.Unlock()
+	if a.suspendedWatch != nil {
+		delete(a.suspendedWatch, watcher)
+	}
+	if watcher == watchNameCommits {
+		a.commitSeen.reset()
+	}
+}
+
+// whether a watcher is currently suspended.
+func (a *App) watchSuspended(watcher string) bool {
+	a.watchMu.Lock()
+	defer a.watchMu.Unlock()
+	return a.suspendedWatch[watcher]
 }
 
 // persist the review and record the resulting file modification time, so the
@@ -126,6 +179,10 @@ func (a *App) startup(ctx context.Context) error {
 	// watch the working tree for uncommitted changes, so the banners update the
 	// moment a tracked file changes on disk.
 	go a.watchWorkingTree(ctx)
+
+	// watch the source branch's HEAD, so a new commit prompts a refresh rather
+	// than silently leaving the diff describing an older revision.
+	go a.watchSourceBranch(ctx, a.review.SourceBranch)
 
 	return nil
 }

@@ -28,11 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A "Group by" control can split the file list under headings; the first grouper separates unmarked files from marked
 - The divider between the file list and the diff can now be dragged to resize the two panes, by mouse or arrow keys
 - Banners now warn when the working tree has uncommitted changes the diff cannot show, updating live as files change
-  - A page-wide banner counts modified and deleted tracked files; new untracked files are ignored
+  - A page-wide banner reports that uncommitted changes exist; new untracked files are ignored
   - Viewing a changed file shows a per-file warning linking to your configured diff tool via `git difftool`
 - An "Add comment" button at the top of each file lets you leave feedback on the file as a whole, not just a line
   - This is the only way to comment on a binary file, which has no lines to attach a comment to
   - Top-level comments sit above any untethered comments, which sit above the code, and show in the review overview too
+- New commits on the branch under review now raise the refresh banner, so the diff on screen is never silently out of date
+  - The banner says whether it is reporting new commits, an agent's edits to your review, or both
+  - Nothing reloads until you press Refresh, so a commit made mid-review cannot move the page under you
 
 ### Changed
 
@@ -44,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The Go code is now a single module rather than three
 - The binary-file placeholder now reads "binary file, cannot diff", explaining the empty pane rather than just naming it
 - A pure rename (no content change) now shows a "renamed from `<old path>`, no changes" placeholder instead of a blank diff pane
+- Background checks for outside changes now run every five seconds and pause while a banner is up, rather than polling constantly
 
 ### Fixed
 

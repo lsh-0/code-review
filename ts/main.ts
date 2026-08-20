@@ -6,6 +6,10 @@
 import * as api from "./client.ts";
 import type { WorkingTreeStatus } from "./core/types.ts";
 import { isFileDirty, workingTreeBannerText } from "./core/worktree.ts";
+import {
+  type ChangeSource,
+  reviewChangedBannerText,
+} from "./core/notification.ts";
 import { byId, el, requireId } from "./dom.ts";
 import { state } from "./render/state.ts";
 import { clampPaneWidth } from "./core/panes.ts";
@@ -289,9 +293,14 @@ async function refreshWorkingTreeStatus(): Promise<void> {
   renderFileDirtyBanner(state.currentFile);
 }
 
-// render the page-wide green banner from the cached status: shown with a count
-// of modified and deleted tracked files when the tree is dirty, hidden when
-// clean.
+// render the page-wide green banner from the cached status: shown when the tree
+// is dirty, hidden when clean.
+//
+// The banner's visibility drives the working-tree watcher's suspension, since
+// this banner is that watcher's alert. Raising it suspends the watcher, which
+// then reports only the return to a clean tree; that return hides the banner
+// here and resumes normal reporting. Both calls are idempotent, so re-rendering
+// an unchanged banner costs nothing.
 function renderWorkingTreeBanner(): void {
   const banner = byId("working-tree-banner");
   const text = byId("working-tree-banner-text");
@@ -301,10 +310,12 @@ function renderWorkingTreeBanner(): void {
   const message = workingTreeBannerText(workingTreeStatus);
   if (message === null) {
     banner.classList.add("hidden");
+    void api.resumeWatch("worktree");
     return;
   }
   text.textContent = message;
   banner.classList.remove("hidden");
+  void api.suspendWatch("worktree");
 }
 
 // render the per-file orange banner for the currently viewed file: shown when
@@ -323,29 +334,56 @@ function renderFileDirtyBanner(filePath: string): void {
   }
 }
 
-function showReviewChangedBanner(): void {
+// which changes are pending on the refresh banner. A watcher suspends once it
+// has alerted, so this only ever accumulates a second entry when the other
+// watcher alerts before the reviewer clears the banner.
+const pendingChanges = new Set<ChangeSource>();
+
+// raise the refresh banner for a newly detected change and suspend the watcher
+// that reported it: it has done its job, and polling on would only re-report
+// what the reviewer has already been shown.
+function raiseReviewChangedBanner(source: ChangeSource): void {
+  pendingChanges.add(source);
+  const text = byId("review-changed-banner-text");
+  if (text) {
+    text.textContent = reviewChangedBannerText(pendingChanges) ?? "";
+  }
   byId("review-changed-banner")?.classList.remove("hidden");
+  void api.suspendWatch(source);
 }
 
-function hideReviewChangedBanner(): void {
+// clear the banner, resuming every watcher it was speaking for. Both the refresh
+// and the dismiss control come here: refreshing absorbs the change and
+// dismissing declines it, but either way the reviewer has seen it, so detection
+// must start again rather than stay silent for the rest of the session.
+function clearReviewChangedBanner(): void {
   byId("review-changed-banner")?.classList.add("hidden");
+  for (const source of pendingChanges) {
+    void api.resumeWatch(source);
+  }
+  pendingChanges.clear();
 }
 
-// wire the external-change banner: the backend's `review:changed` event raises
-// it; its buttons refresh or dismiss.
+// wire the external-change banner: the backend's `review:changed` and
+// `commits:changed` events raise it, naming which of the two occurred; its
+// buttons refresh or dismiss, and both clear it.
 function setupReviewChangedBanner(): void {
   const runtime =
     (globalThis as { runtime?: { EventsOn(ev: string, cb: () => void): void } })
       .runtime;
-  runtime?.EventsOn("review:changed", () => showReviewChangedBanner());
+  runtime?.EventsOn("review:changed", () => raiseReviewChangedBanner("state"));
+  runtime?.EventsOn(
+    "commits:changed",
+    () => raiseReviewChangedBanner("commits"),
+  );
 
   byId("banner-refresh-btn")?.addEventListener("click", () => {
-    hideReviewChangedBanner();
+    clearReviewChangedBanner();
     void triggerRefresh();
   });
   byId("banner-dismiss-btn")?.addEventListener(
     "click",
-    () => hideReviewChangedBanner(),
+    () => clearReviewChangedBanner(),
   );
 }
 
