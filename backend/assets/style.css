@@ -48,11 +48,18 @@
     --font-sans: "Atkinson Hyperlegible Next", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-mono: "Source Code Pro", "Monaco", "Menlo", "Courier New", monospace;
 
-    /* Code/diff text scale. Driven by Ctrl+wheel zoom, which sets --zoom on
-       the root element; the diff font size is the base times the zoom. */
+    /* Review text scale. Driven by Ctrl+wheel zoom, which sets --zoom on the
+       root element; each scaled font size is its base times the zoom. Code and
+       comment prose keep separate bases — monospace diff text and sans-serif
+       conversation want different sizes — but share the one zoom factor, so a
+       single control scales the whole reading surface. */
     --diff-font-base: 0.9rem;
     --zoom: 1;
     --diff-font-size: calc(var(--diff-font-base) * var(--zoom));
+    /* 1rem is what comment text inherits from `body`, so zoom 1.0 renders
+       exactly as it did before comments became zoomable. */
+    --comment-font-base: 1rem;
+    --comment-font-size: calc(var(--comment-font-base) * var(--zoom));
 
     /* Base — warm, low-glare palette adapted from the ADL design system. */
     --color-bg: #fffdf9;
@@ -612,11 +619,12 @@ button.overview-file-name:hover {
     color: var(--color-text);
 }
 
+/* scales with the comment text beside it, as `.top-level-add-comment` does. */
 .overview-add-comment {
     margin: 0.5rem 0 1rem;
     padding: 0.3rem 0.8rem;
     font-family: inherit;
-    font-size: 0.85rem;
+    font-size: calc(0.85rem * var(--zoom));
     color: var(--color-accent);
     background: transparent;
     border: 1px solid var(--color-border);
@@ -906,10 +914,19 @@ button.overview-file-name:hover {
 .comment-thread {
     background: var(--color-bg-subtle);
     border-left: 3px solid var(--color-status-resolved);
+    /* every thread — line-anchored, top-level and outdated — is built through
+       this one container, so the zoomable text size is declared here once and
+       the parts inside take their size in `em` from it. Keep this the ONLY
+       font-size between the thread and its text: an `em` size compounds through
+       any font-size declared in between, and the thread is flat today (a reply
+       is a plain `.comment` in the rail; replies of replies are not rendered). */
+    font-size: var(--comment-font-size);
     /* no vertical margin: the thread butts against the commented line above and
        the next diff line below, so a comment and its code read as one block. The
        0.75rem inset is the single indent step shared by the comment card and the
-       reply rail, so the hunk edge, comment edge and reply edge align. */
+       reply rail, so the hunk edge, comment edge and reply edge align. It stays
+       in rem, not em: the hunk it aligns to has fixed padding, so scaling this
+       inset with the text would drift the two edges apart as the user zooms. */
     margin: 0;
     padding: 0.75rem;
 }
@@ -931,11 +948,14 @@ button.overview-file-name:hover {
     margin-bottom: 1rem;
 }
 
+/* the control sits beside the comment text it adds to, so it scales with it. It
+   is outside any `.comment-thread`, so it takes the zoom factor directly rather
+   than inheriting a scaled size in `em`. */
 .top-level-add-comment {
     margin: 0.5rem 0;
     padding: 0.3rem 0.8rem;
     font-family: inherit;
-    font-size: 0.85rem;
+    font-size: calc(0.85rem * var(--zoom));
     color: var(--color-accent);
     background: transparent;
     border: 1px solid var(--color-border);
@@ -1011,11 +1031,14 @@ button.overview-file-name:hover {
     margin-bottom: 0.5rem;
 }
 
+/* the badge, author and action buttons size in `em` so they stay at their
+   established fraction of the comment text at every zoom factor — zoom changes
+   the scale of the card, not its internal typographic hierarchy. */
 .comment-status {
     display: inline-block;
     padding: 0.2rem 0.5rem;
     border-radius: 3px;
-    font-size: 0.75rem;
+    font-size: 0.75em;
     font-weight: 600;
 }
 
@@ -1035,7 +1058,7 @@ button.overview-file-name:hover {
 }
 
 .comment-author {
-    font-size: 0.75rem;
+    font-size: 0.75em;
     color: var(--color-status-ignored);
     font-weight: normal;
 }
@@ -1088,7 +1111,7 @@ button.overview-file-name:hover {
     background: var(--color-bg-primary);
     border-radius: 3px;
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: 0.8em;
 }
 
 .comment-actions button:hover {
@@ -1124,18 +1147,28 @@ button.overview-file-name:hover {
     display: flex;
 }
 
+/* the modal is where comment text is written, so it follows the comment scale:
+   writing at a different size from reading is the mismatch zoom exists to
+   remove. The box has to grow too — scaling only the text would leave a few
+   characters per line in a fixed 600px box at high zoom. The two width rules
+   work as a pair: the box takes the smaller of them, so it widens with the zoom
+   until it reaches 90% of the window and then stops, keeping it on screen at
+   every zoom factor without a media query. */
 .modal-content {
     background: var(--color-bg-primary);
     padding: 2rem;
     border-radius: 8px;
     width: 90%;
-    max-width: 600px;
+    max-width: calc(600px * var(--zoom));
     box-shadow: var(--shadow-md);
 }
 
+/* the modal title scales with the rest of the modal, so the whole comment
+   surface grows as one. `#current-file-name`, the file-content header, is
+   deliberately left fixed — it labels the view, not a comment. */
 .modal-content h3 {
     margin-bottom: 1rem;
-    font-size: 1.2rem;
+    font-size: calc(1.2rem * var(--zoom));
 }
 
 .modal-content textarea {
@@ -1145,7 +1178,7 @@ button.overview-file-name:hover {
     border: 1px solid var(--color-border-input);
     border-radius: 4px;
     font-family: inherit;
-    font-size: 1.05rem;
+    font-size: calc(1.05rem * var(--zoom));
     resize: vertical;
     margin-bottom: 1rem;
 }
@@ -1156,12 +1189,15 @@ button.overview-file-name:hover {
     justify-content: flex-end;
 }
 
+/* every modal here is a comment modal (add, edit, reply), so its buttons are
+   comment controls and scale with the text they sit beside, exactly as the
+   thread's own action buttons do. */
 .modal-actions button {
     padding: 0.5rem 1rem;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: calc(0.9rem * var(--zoom));
 }
 
 #save-comment-btn,

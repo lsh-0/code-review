@@ -88,16 +88,6 @@ comment edits raise the banner but a new commit does not — the reviewer
 sees no prompt that the diff is now stale. A separate poll of the
 source-branch HEAD would close that gap and reuse the same banner.
 ---
-title: Scale comment text with Ctrl+zoom like the diff text
-added: 2026-06-20
-effort: low
-tags: frontend, ui
-summary: Ctrl+zoom scales the diff code but leaves comment text at a fixed size; comments should scale with the same --zoom property
-
-Pre-existing behaviour, unchanged by the Deno frontend rewrite; noticed
-during that rewrite's webview check. The diff lines scale via the --zoom
-custom property but the comment font sizes are fixed.
----
 title: Ctrl-scrolling in the file list resizes the wrong pane via zoom
 added: 2026-06-23
 effort: low

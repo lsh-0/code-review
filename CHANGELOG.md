@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Right-clicking a diff selection in the released GUI now offers a context menu with copy, as it already did under dev
   - A copied selection is the code text only; the gutter line numbers render via CSS and are excluded from the copy
+- Ctrl-zoom now scales comment text along with the diff code, instead of leaving comments at a fixed size
+  - Covers comment threads in every context (line-anchored, top-level, outdated), the add-comment controls, and the compose/edit modal
+  - Application chrome — header, file list, comment-count badges — stays fixed, so zoom scales the review surface, not the navigation
 
 ## [0.7.1] - 2026-06-18
 
