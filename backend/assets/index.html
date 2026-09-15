@@ -9,7 +9,7 @@
 <body>
     <div id="app">
         <div id="review-changed-banner" class="banner hidden">
-            <span>Changes to the review have been made.</span>
+            <span id="review-changed-banner-text"></span>
             <button id="banner-refresh-btn">Refresh</button>
             <button id="banner-dismiss-btn" class="banner-dismiss" title="Dismiss">×</button>
         </div>
@@ -48,7 +48,7 @@
             <div id="pane-resizer" role="separator" aria-orientation="vertical"
                  tabindex="0" aria-label="Resize the file list"></div>
 
-            <div id="diff-view">
+            <div id="diff-view" tabindex="-1">
                 <div id="current-file-header">
                     <h2 id="current-file-name"></h2>
                 </div>

@@ -48,11 +48,18 @@
     --font-sans: "Atkinson Hyperlegible Next", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-mono: "Source Code Pro", "Monaco", "Menlo", "Courier New", monospace;
 
-    /* Code/diff text scale. Driven by Ctrl+wheel zoom, which sets --zoom on
-       the root element; the diff font size is the base times the zoom. */
+    /* Review text scale. Driven by Ctrl+wheel zoom, which sets --zoom on the
+       root element; each scaled font size is its base times the zoom. Code and
+       comment prose keep separate bases — monospace diff text and sans-serif
+       conversation want different sizes — but share the one zoom factor, so a
+       single control scales the whole reading surface. */
     --diff-font-base: 0.9rem;
     --zoom: 1;
     --diff-font-size: calc(var(--diff-font-base) * var(--zoom));
+    /* 1rem is what comment text inherits from `body`, so zoom 1.0 renders
+       exactly as it did before comments became zoomable. */
+    --comment-font-base: 1rem;
+    --comment-font-size: calc(var(--comment-font-base) * var(--zoom));
 
     /* Base — warm, low-glare palette adapted from the ADL design system. */
     --color-bg: #fffdf9;
@@ -645,11 +652,12 @@ button.overview-file-name:hover {
     color: var(--color-text);
 }
 
+/* scales with the comment text beside it, as `.top-level-add-comment` does. */
 .overview-add-comment {
     margin: 0.5rem 0 1rem;
     padding: 0.3rem 0.8rem;
     font-family: inherit;
-    font-size: 0.85rem;
+    font-size: calc(0.85rem * var(--zoom));
     color: var(--color-accent);
     background: transparent;
     border: 1px solid var(--color-border);
@@ -735,7 +743,8 @@ button.overview-file-name:hover {
     overflow-wrap: anywhere;
 }
 
-.binary-placeholder {
+.binary-placeholder,
+.rename-placeholder {
     padding: 2rem;
     text-align: center;
     color: var(--color-hunk-text);
@@ -786,25 +795,10 @@ button.overview-file-name:hover {
     background: var(--color-bg-subtle);
 }
 
-/* a between-hunks gap revealed to completion makes the two hunks continuous:
-   close the separating margin and flatten the bordered/rounded edges where
-   they meet so the two boxes read as one block. */
-.diff-hunk.joined-above {
-    margin-top: 0;
-    border-top: none;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
-}
-
-.diff-hunk.joined-below {
-    margin-bottom: 0;
-    border-bottom: none;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-}
-
-/* the lower hunk's header is hidden once its gap is fully revealed: the two
-   hunks are now one continuous block and the @@ boundary no longer applies. */
+/* two hunks merged into one window render as one continuous block: the lower
+   hunk's header stays in the DOM (navigation, tests) but the @@ boundary no
+   longer applies visually. The window container itself provides the single
+   border, so no join classes are needed on the containers. */
 .hunk-header.joined-hidden {
     display: none;
 }
@@ -938,10 +932,19 @@ button.overview-file-name:hover {
 .comment-thread {
     background: var(--color-bg-subtle);
     border-left: 3px solid var(--color-status-resolved);
+    /* every thread — line-anchored, top-level and outdated — is built through
+       this one container, so the zoomable text size is declared here once and
+       the parts inside take their size in `em` from it. Keep this the ONLY
+       font-size between the thread and its text: an `em` size compounds through
+       any font-size declared in between, and the thread is flat today (a reply
+       is a plain `.comment` in the rail; replies of replies are not rendered). */
+    font-size: var(--comment-font-size);
     /* no vertical margin: the thread butts against the commented line above and
        the next diff line below, so a comment and its code read as one block. The
        0.75rem inset is the single indent step shared by the comment card and the
-       reply rail, so the hunk edge, comment edge and reply edge align. */
+       reply rail, so the hunk edge, comment edge and reply edge align. It stays
+       in rem, not em: the hunk it aligns to has fixed padding, so scaling this
+       inset with the text would drift the two edges apart as the user zooms. */
     margin: 0;
     padding: 0.75rem;
 }
@@ -953,6 +956,38 @@ button.overview-file-name:hover {
 .diff-line.commented::before {
     opacity: 1;
     background: var(--color-status-resolved);
+}
+
+/* top-level (anchorless) file comments: feedback about the whole file, not any
+   line. They render at the very top of the file view, above the untethered block
+   and the code — the only comment surface for a file with no lines (a binary
+   file). */
+.top-level-comments {
+    margin-bottom: 1rem;
+}
+
+/* the control sits beside the comment text it adds to, so it scales with it. It
+   is outside any `.comment-thread`, so it takes the zoom factor directly rather
+   than inheriting a scaled size in `em`. */
+.top-level-add-comment {
+    margin: 0.5rem 0;
+    padding: 0.3rem 0.8rem;
+    font-family: inherit;
+    font-size: calc(0.85rem * var(--zoom));
+    color: var(--color-accent);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.top-level-add-comment:hover {
+    background: var(--color-bg-subtle);
+}
+
+/* the top-level thread sits directly under the button with a small gap. */
+.top-level-comments .comment-thread {
+    margin-top: 0.5rem;
 }
 
 /* outdated comments: the anchor was lost after the file changed, so they render
@@ -1014,11 +1049,14 @@ button.overview-file-name:hover {
     margin-bottom: 0.5rem;
 }
 
+/* the badge, author and action buttons size in `em` so they stay at their
+   established fraction of the comment text at every zoom factor — zoom changes
+   the scale of the card, not its internal typographic hierarchy. */
 .comment-status {
     display: inline-block;
     padding: 0.2rem 0.5rem;
     border-radius: 3px;
-    font-size: 0.75rem;
+    font-size: 0.75em;
     font-weight: 600;
 }
 
@@ -1038,7 +1076,7 @@ button.overview-file-name:hover {
 }
 
 .comment-author {
-    font-size: 0.75rem;
+    font-size: 0.75em;
     color: var(--color-status-ignored);
     font-weight: normal;
 }
@@ -1108,7 +1146,7 @@ button.overview-file-name:hover {
     background: var(--color-bg-primary);
     border-radius: 3px;
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: 0.8em;
 }
 
 .comment-actions button:hover {
@@ -1144,18 +1182,28 @@ button.overview-file-name:hover {
     display: flex;
 }
 
+/* the modal is where comment text is written, so it follows the comment scale:
+   writing at a different size from reading is the mismatch zoom exists to
+   remove. The box has to grow too — scaling only the text would leave a few
+   characters per line in a fixed 600px box at high zoom. The two width rules
+   work as a pair: the box takes the smaller of them, so it widens with the zoom
+   until it reaches 90% of the window and then stops, keeping it on screen at
+   every zoom factor without a media query. */
 .modal-content {
     background: var(--color-bg-primary);
     padding: 2rem;
     border-radius: 8px;
     width: 90%;
-    max-width: 600px;
+    max-width: calc(600px * var(--zoom));
     box-shadow: var(--shadow-md);
 }
 
+/* the modal title scales with the rest of the modal, so the whole comment
+   surface grows as one. `#current-file-name`, the file-content header, is
+   deliberately left fixed — it labels the view, not a comment. */
 .modal-content h3 {
     margin-bottom: 1rem;
-    font-size: 1.2rem;
+    font-size: calc(1.2rem * var(--zoom));
 }
 
 .modal-content textarea {
@@ -1165,7 +1213,7 @@ button.overview-file-name:hover {
     border: 1px solid var(--color-border-input);
     border-radius: 4px;
     font-family: inherit;
-    font-size: 1.05rem;
+    font-size: calc(1.05rem * var(--zoom));
     resize: vertical;
     margin-bottom: 1rem;
 }
@@ -1176,12 +1224,15 @@ button.overview-file-name:hover {
     justify-content: flex-end;
 }
 
+/* every modal here is a comment modal (add, edit, reply), so its buttons are
+   comment controls and scale with the text they sit beside, exactly as the
+   thread's own action buttons do. */
 .modal-actions button {
     padding: 0.5rem 1rem;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: calc(0.9rem * var(--zoom));
 }
 
 #save-comment-btn,
@@ -1257,4 +1308,82 @@ button.overview-file-name:hover {
 }
 .line-content .hljs-strong {
     font-weight: 700;
+}
+
+/* In-page find. WebKitGTK does not wire up the native Ctrl-f, so the find bar is
+   our own: a small overlay pinned to the top-right of the window, mirroring a
+   browser's find bar. It searches the whole page (diff, file list, header). The
+   match highlights are `<mark>` spans the find render layer splices into the
+   page text. */
+#find-bar {
+    position: fixed;
+    top: 0.75rem;
+    right: 1.25rem;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.5rem;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    box-shadow: var(--shadow-md);
+}
+
+#find-input {
+    width: 16rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--color-border-input);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: var(--color-text);
+    background: var(--color-bg-primary);
+}
+
+#find-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+}
+
+.find-count {
+    min-width: 5rem;
+    text-align: right;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
+.find-nav,
+.find-close {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    line-height: 1;
+    padding: 0.2rem 0.5rem;
+    font-size: 1rem;
+}
+
+.find-nav:hover,
+.find-close:hover {
+    background: var(--color-hover-bg);
+}
+
+/* a search match in the diff text: a soft highlight that keeps the underlying
+   code colour readable. The active match is the brighter accent so the
+   prev/next step is visible as it scrolls into view. */
+.line-content .find-match,
+mark.find-match {
+    background: #fff1a8;
+    color: inherit;
+    border-radius: 2px;
+    padding: 0;
+}
+
+.line-content .find-match-active,
+mark.find-match-active {
+    background: #ffb300;
+    color: #0b0c0c;
 }

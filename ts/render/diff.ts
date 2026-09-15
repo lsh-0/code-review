@@ -6,17 +6,17 @@
 import { type DiffLine, LineAdded, LineRemoved } from "../core/types.ts";
 import { getCommentsForLine } from "../core/comments.ts";
 import { el } from "../dom.ts";
-import { type CommentActions, lineCommentThread } from "./comments.ts";
+import { lineCommentThread } from "./comments.ts";
 import { highlightLine, languageForPath } from "./highlight.ts";
 import { commentsFor } from "./state.ts";
+import { showCommentModal } from "./modals.ts";
 
 // build a single diff-line row: the old/new line-number gutter (new number
 // clickable to add a comment) and the highlighted content. A new-side line
-// carries a `data-line` attribute so incremental comment updates can find it.
+// carries a `data-line` attribute so tests and navigation can find it.
 export function createDiffLine(
   line: DiffLine,
   filePath: string,
-  onAddComment: (filePath: string, lineNo: number) => void,
 ): HTMLElement {
   const classes = ["diff-line"];
   if (line.Type === LineAdded) {
@@ -44,7 +44,7 @@ export function createDiffLine(
     newNum.setAttribute("data-num", String(line.NewLineNo));
     newNum.classList.add("clickable");
     const lineNo = line.NewLineNo;
-    newNum.addEventListener("click", () => onAddComment(filePath, lineNo));
+    newNum.addEventListener("click", () => showCommentModal(filePath, lineNo));
   }
   numbers.appendChild(newNum);
   lineElem.appendChild(numbers);
@@ -66,27 +66,12 @@ export function appendCommentThread(
   lineElem: HTMLElement,
   filePath: string,
   lineNo: number,
-  actions: CommentActions,
 ): void {
   const comments = getCommentsForLine(commentsFor(filePath), lineNo);
   if (comments.length > 0) {
     lineElem.classList.add("commented");
-    parent.appendChild(lineCommentThread(filePath, lineNo, comments, actions));
+    parent.appendChild(lineCommentThread(filePath, lineNo, comments));
   }
-}
-
-// a comment thread for a line, or null when there are none. Used when splicing
-// revealed context lines so each carries its thread if it has one.
-export function commentThreadOrNil(
-  filePath: string,
-  lineNo: number,
-  actions: CommentActions,
-): HTMLElement | null {
-  const comments = getCommentsForLine(commentsFor(filePath), lineNo);
-  if (comments.length === 0) {
-    return null;
-  }
-  return lineCommentThread(filePath, lineNo, comments, actions);
 }
 
 // whether a new-side line carries a comment, for the overview's

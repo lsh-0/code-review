@@ -1,17 +1,10 @@
 import { assertEquals } from "@std/assert";
 import {
-  captureContextRadius,
-  getLineContext,
   hunkHasComments,
   overviewContextLines,
   overviewVisibleLines,
 } from "./overview.ts";
-import {
-  type DiffFile,
-  type DiffHunk,
-  type DiffLine,
-  LineContext,
-} from "./types.ts";
+import { type DiffHunk, type DiffLine, LineContext } from "./types.ts";
 
 function line(newLineNo: number, content: string): DiffLine {
   return {
@@ -31,66 +24,6 @@ function hunk(lines: DiffLine[]): DiffHunk {
     Lines: lines,
   };
 }
-
-function file(hunks: DiffHunk[]): DiffFile {
-  return { Path: "f.go", Hunks: hunks, Binary: false };
-}
-
-Deno.test("getLineContext: window spans the anchored line and its neighbours", () => {
-  // a 3-line hunk fits entirely within the radius-3 window; the anchored line
-  // (index 1) sits at offset 1 because the window is clipped at the hunk start.
-  const given = file([hunk([line(1, "a"), line(2, "b"), line(3, "c")])]);
-  const actual = getLineContext(given, 2);
-  assertEquals(actual, { context: ["a", "b", "c"], offset: 1 });
-});
-
-Deno.test("getLineContext: first line anchors at offset 0", () => {
-  const given = file([hunk([line(1, "a"), line(2, "b")])]);
-  const actual = getLineContext(given, 1);
-  assertEquals(actual, { context: ["a", "b"], offset: 0 });
-});
-
-Deno.test("getLineContext: last line is the final window entry", () => {
-  const given = file([hunk([line(1, "a"), line(2, "b")])]);
-  const actual = getLineContext(given, 2);
-  assertEquals(actual, { context: ["a", "b"], offset: 1 });
-});
-
-Deno.test("getLineContext: an interior line gives a full radius window", () => {
-  // 9 lines, anchored on line 5 (index 4): the window is the radius-3 span
-  // indices 1..7, so 7 lines, with the anchored line at offset 3 (=radius).
-  const lines = Array.from({ length: 9 }, (_, i) => line(i + 1, `l${i + 1}`));
-  const given = file([hunk(lines)]);
-  const actual = getLineContext(given, 5);
-  assertEquals(actual, {
-    context: ["l2", "l3", "l4", "l5", "l6", "l7", "l8"],
-    offset: 3,
-  });
-  assertEquals(actual.offset, captureContextRadius);
-});
-
-Deno.test("getLineContext: window clips at the hunk end", () => {
-  // anchored on the last line (index 5) of a 6-line hunk: the window reaches
-  // back radius-3 lines (indices 2..5) and the anchored line is the last entry.
-  const lines = Array.from({ length: 6 }, (_, i) => line(i + 1, `l${i + 1}`));
-  const given = file([hunk(lines)]);
-  const actual = getLineContext(given, 6);
-  assertEquals(actual, {
-    context: ["l3", "l4", "l5", "l6"],
-    offset: 3,
-  });
-});
-
-Deno.test("getLineContext: missing file returns an empty window", () => {
-  const actual = getLineContext(undefined, 2);
-  assertEquals(actual, { context: [], offset: 0 });
-});
-
-Deno.test("getLineContext: line not found returns an empty window", () => {
-  const given = file([hunk([line(1, "a")])]);
-  const actual = getLineContext(given, 99);
-  assertEquals(actual, { context: [], offset: 0 });
-});
 
 Deno.test("hunkHasComments: true when a new-side line carries a comment", () => {
   const given = hunk([line(1, "a"), line(2, "b")]);

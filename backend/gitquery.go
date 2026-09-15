@@ -63,6 +63,27 @@ func BlobSHAs(repoPath, rev string, paths []string) (map[string]string, error) {
 	return result, nil
 }
 
+// the commit SHA a revision resolves to, via `git rev-parse`. Where `BlobSHAs`
+// answers "did this file's content change", this answers "did the branch move":
+// the source-branch poller compares it against the last-seen value to notice a
+// new commit.
+//
+// `--verify` makes an unknown or ambiguous revision a clean error instead of git
+// echoing the argument back as though it were a SHA. `^{commit}` pins the result
+// to a commit, so an annotated tag resolves to what it points at rather than to
+// the tag object.
+func CommitSHA(repoPath, rev string) (string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--verify", rev+"^{commit}")
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return "", fmt.Errorf("failed to resolve commit at %s: %w (stderr: %s)", rev, err, string(exitErr.Stderr))
+		}
+		return "", fmt.Errorf("failed to resolve commit at %s: %w", rev, err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 // tracked files whose working-tree state differs from the index: those modified
 // and those deleted. New untracked files are deliberately excluded — the review
 // is about committed changes, and an untracked file is not yet part of it.
@@ -128,6 +149,13 @@ func GetWorkingTreeStatus(repoPath string) (WorkingTreeStatus, error) {
 // the two sets, so equal modified and deleted sets imply an equal union.
 func WorkingTreeStatusEqual(a, b WorkingTreeStatus) bool {
 	return sameSet(a.Modified, b.Modified) && sameSet(a.Deleted, b.Deleted)
+}
+
+// whether a status describes a clean tree: no tracked file modified or deleted.
+// The page-wide banner is raised on exactly this condition, and its return to
+// true is what clears the banner and resumes the working-tree watcher.
+func WorkingTreeStatusClean(s WorkingTreeStatus) bool {
+	return len(s.Modified) == 0 && len(s.Deleted) == 0
 }
 
 // whether two path slices contain the same paths regardless of order. Git

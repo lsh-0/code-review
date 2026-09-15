@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Ctrl-f now opens an in-page find bar that searches the whole page and highlights every match, since WebKitGTK has no native find dialogue
+  - Type to search; step through matches with Enter/F3 (forward) or Shift+Enter/Shift+F3 (backward), wrapping around
+  - Search covers the diff, comment threads, and the file list; Escape closes the bar and restores the page
 - A command-line interface for AI agents to act on a review, so they no longer hand-edit the review state file
   - Read commands list active comments, show a comment's thread, and summarise the review, all as JSON
   - Agents resolve, reactivate, reply to and add comments, and unmark files they change, through safe commands
@@ -25,8 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A "Group by" control can split the file list under headings; the first grouper separates unmarked files from marked
 - The divider between the file list and the diff can now be dragged to resize the two panes, by mouse or arrow keys
 - Banners now warn when the working tree has uncommitted changes the diff cannot show, updating live as files change
-  - A page-wide banner counts modified and deleted tracked files; new untracked files are ignored
+  - A page-wide banner reports that uncommitted changes exist; new untracked files are ignored
   - Viewing a changed file shows a per-file warning linking to your configured diff tool via `git difftool`
+- An "Add comment" button at the top of each file lets you leave feedback on the file as a whole, not just a line
+  - This is the only way to comment on a binary file, which has no lines to attach a comment to
+  - Top-level comments sit above any untethered comments, which sit above the code, and show in the review overview too
+- New commits on the branch under review now raise the refresh banner, so the diff on screen is never silently out of date
+  - The banner says whether it is reporting new commits, an agent's edits to your review, or both
+  - Nothing reloads until you press Refresh, so a commit made mid-review cannot move the page under you
 - Review feedback raised on a Bitbucket or GitHub pull request can now be imported and worked through locally
   - "Import feedback" in the GUI, or `code-review import <file>`, reads a feedback document and merges it into the review
   - Imported comments appear against their lines like your own, and their reply threads are kept
@@ -45,11 +54,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Building from source now needs [Deno](https://deno.com) instead of GopherJS and a pinned Go 1.19 (build-time only)
   - The Go code is now a single module rather than three
 - The binary-file placeholder now reads "binary file, cannot diff", explaining the empty pane rather than just naming it
+- A pure rename (no content change) now shows a "renamed from `<old path>`, no changes" placeholder instead of a blank diff pane
+- Background checks for outside changes now run every five seconds and pause while a banner is up, rather than polling constantly
+- Expanded hunk context is now modelled as growable "windows": a distant comment gets its own small window instead of
+  requiring everything in between to be revealed, windows merge once the gap between them narrows, and expansion collapses
+  back to its default extent on refresh rather than persisting stale reveals
 
 ### Fixed
 
 - Right-clicking a diff selection in the released GUI now offers a context menu with copy, as it already did under dev
   - A copied selection is the code text only; the gutter line numbers render via CSS and are excluded from the copy
+- Ctrl-zoom now scales comment text along with the diff code, instead of leaving comments at a fixed size
+  - Covers comment threads in every context (line-anchored, top-level, outdated), the add-comment controls, and the compose/edit modal
+  - Application chrome — header, file list, comment-count badges — stays fixed, so zoom scales the review surface, not the navigation
+- Commenting on a line revealed by expanding a hunk no longer marks the comment orphaned (red border, yellow background)
+  - The comment now anchors normally and stays visible in its own window when you return to the file
 
 ## [0.7.1] - 2026-06-18
 

@@ -1,28 +1,29 @@
 {
   "comments": [
     {
-      "anchors": [
-        {
-          "blob": "",
-          "context": [
-            "before",
-            "the line",
-            "after"
-          ],
-          "line_number": 7,
-          "offset": 1
-        }
-      ],
       "author": "Test User",
       "content": "a note",
-      "id": "f9c9ef87f15c93bd",
+      "context": [
+        "l4",
+        "l5",
+        "l6",
+        "the line",
+        "l8",
+        "l9",
+        "l10"
+      ],
+      "id": "ff4608b2795f4539",
+      "line": 7,
+      "outdated": false,
       "status": "active"
     },
     {
       "author": "Test User",
       "content": "a reply",
-      "id": "9a64df9bec982a9a",
-      "parent_id": "f9c9ef87f15c93bd",
+      "id": "41d012f1eab7da1f",
+      "line": 0,
+      "outdated": false,
+      "parent_id": "ff4608b2795f4539",
       "status": "active"
     }
   ],

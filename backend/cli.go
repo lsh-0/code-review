@@ -35,13 +35,16 @@ type reviewContext struct {
 	repoPath  string
 }
 
-// the placement inputs an import needs: the new-side diff lines and the current blob
-// SHA of every file in the diff between the review's branches.
+// the placement inputs an import needs: each file's full content at the source
+// branch head, as line references, plus its current blob SHA.
 //
-// This is the one git-touching step of an import, and it is read-only. A blob-SHA
-// lookup failure is not fatal: the affected comments anchor with an empty blob, which
-// the reconciler treats as a baseline awaiting backfill, exactly as a comment added
-// during a transient git failure does.
+// The corpus is the whole file body rather than only the lines a hunk shows, matching
+// what the reconciler anchors against. A comment on a line outside every hunk is
+// therefore placed rather than left untethered.
+//
+// This is the one git-touching step of an import, and it is read-only. A file whose
+// body or SHA cannot be read is dropped from both maps, so its comments anchor with an
+// empty blob, which the reconciler treats as a baseline awaiting backfill.
 func importPlacement(ctx *reviewContext) (map[string][]model.DiffLineRef, map[string]string, error) {
 	diff, err := DiffQuery{
 		RepoPath: ctx.repoPath,
@@ -52,18 +55,30 @@ func importPlacement(ctx *reviewContext) (map[string][]model.DiffLineRef, map[st
 		return nil, nil, fmt.Errorf("failed to compute the diff to place comments against: %w", err)
 	}
 
-	diffLines := diffLinesByPath(diff)
-
-	paths := make([]string, 0, len(diffLines))
-	for path := range diffLines {
-		paths = append(paths, path)
+	paths := make([]string, 0, len(diff))
+	for i := range diff {
+		if diff[i].Binary {
+			continue
+		}
+		paths = append(paths, diff[i].Path)
 	}
+
 	blobs, err := BlobSHAs(ctx.repoPath, ctx.review.SourceBranch, paths)
 	if err != nil {
 		blobs = map[string]string{}
 	}
 
-	return diffLines, blobs, nil
+	corpus := make(map[string][]model.DiffLineRef, len(paths))
+	for _, path := range paths {
+		body, err := GetFileAtRevision(ctx.repoPath, ctx.review.SourceBranch, path)
+		if err != nil {
+			delete(blobs, path)
+			continue
+		}
+		corpus[path] = fileLineRefs(body)
+	}
+
+	return corpus, blobs, nil
 }
 
 // commentView is the purpose-built JSON shape for a comment. It exposes the

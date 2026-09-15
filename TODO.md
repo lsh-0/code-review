@@ -41,12 +41,6 @@ effort: medium
 tags: frontend, ui, comments
 summary: Pressing Ctrl-z while typing in the add-comment box does not undo the edit
 ---
-title: Ctrl-f should search the page contents
-added: 2026-06-16
-effort: medium
-tags: frontend, ui
-summary: Pressing Ctrl-f does nothing; it should search the page for matches and highlight them
----
 title: Hide files matching ignore patterns, with a show-hidden toggle
 added: 2026-06-16
 updated: 2026-06-29
@@ -73,17 +67,6 @@ Distribution is local-build only today. The Wails cross-platform guide
 turning a pushed tag into a release with the binaries attached is the
 companion piece. Relates to the AppImage item, which covers Linux.
 ---
-title: Detect new commits on the source branch and offer a refresh banner
-added: 2026-06-18
-effort: medium
-tags: backend, frontend, ui
-summary: Watch the source-branch HEAD for new commits and show the refresh banner, as the state-file watcher already does for external review edits
-
-The existing watcher polls only the review-state JSON, so an agent's
-comment edits raise the banner but a new commit does not — the reviewer
-sees no prompt that the diff is now stale. A separate poll of the
-source-branch HEAD would close that gap and reuse the same banner.
----
 title: Scale comment text with Ctrl+zoom like the diff text
 added: 2026-06-20
 effort: low
@@ -93,19 +76,6 @@ summary: Ctrl+zoom scales the diff code but leaves comment text at a fixed size;
 Pre-existing behaviour, unchanged by the Deno frontend rewrite; noticed
 during that rewrite's webview check. The diff lines scale via the --zoom
 custom property but the comment font sizes are fixed.
----
-title: Empty diff pane gives no reason for renamed or binary files
-added: 2026-06-20
-updated: 2026-06-29
-effort: medium
-tags: frontend, ui, diff
-summary: Pure-rename (no content change) files render a blank diff pane with no indication of why — should show "renamed, no changes"
-
-The binary case is now handled: `ts/render/hunks.ts` renders a "binary
-file, cannot diff" placeholder (commit `ab7f9ca`). Pure-rename files
-still render empty — the `DiffFile` type carries no `Renamed` field, so
-rename detection has to be added before a "renamed, no changes"
-placeholder can be shown.
 ---
 title: Ctrl-scrolling in the file list resizes the wrong pane via zoom
 added: 2026-06-23

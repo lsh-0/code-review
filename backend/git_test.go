@@ -207,6 +207,57 @@ func TestGetDiff(t *testing.T) {
 	}
 }
 
+// a pure rename is reported as a rename even when the repo has rename detection
+// turned off, because GetDiff passes -M. Without the flag git would emit an
+// unrelated delete-plus-add pair and ParseDiff would never set Renamed.
+func TestGetDiffPureRenameWithRenamesDisabled(t *testing.T) {
+	tmpDir := setupTestRepo(t)
+
+	cmd := exec.Command("git", "config", "diff.renames", "false")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to disable rename detection: %v", err)
+	}
+
+	baseBranch, err := GetCurrentBranch(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to get base branch: %v", err)
+	}
+
+	for _, args := range [][]string{
+		{"checkout", "-b", "feature"},
+		{"mv", "test.txt", "moved.txt"},
+		{"commit", "-m", "pure rename"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = tmpDir
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("git %v: %v", args, err)
+		}
+	}
+
+	headBranch, _ := GetCurrentBranch(tmpDir)
+	diff, err := GetDiff(tmpDir, baseBranch, headBranch)
+	if err != nil {
+		t.Fatalf("failed to get diff: %v", err)
+	}
+
+	files := ParseDiff(diff)
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(files))
+	}
+	file := files[0]
+	if !file.Renamed {
+		t.Errorf("expected the file to be flagged renamed; diff was: %q", diff)
+	}
+	if file.Path != "moved.txt" || file.OldPath != "test.txt" {
+		t.Errorf("expected rename test.txt -> moved.txt, got %q -> %q", file.OldPath, file.Path)
+	}
+	if len(file.Hunks) != 0 {
+		t.Errorf("expected a pure rename to have 0 hunks, got %d", len(file.Hunks))
+	}
+}
+
 func TestGetDiffInvalidRepo(t *testing.T) {
 	_, err := GetDiff("/nonexistent", "main", "feature")
 	if err == nil {

@@ -5,31 +5,20 @@
 import { assert, assertEquals } from "@std/assert";
 import { setupDom } from "./dom_test_setup.ts";
 import { renderFileList } from "./filelist.ts";
-import { renderDiff } from "./hunks.ts";
-import { renderOverview } from "./overview.ts";
-import { applyMutation } from "./mutate.ts";
-import { type CommentActions, createCommentThread } from "./comments.ts";
-import { state } from "./state.ts";
-import type { Anchor, Comment, DiffFile } from "../core/types.ts";
-import { LineAdded, localSourceID } from "../core/types.ts";
 
-const noopActions: CommentActions = {
-  onReply: () => {},
-  onEdit: () => {},
-  onResolve: () => {},
-  onIgnore: () => {},
-  onReactivate: () => {},
-  onDelete: () => {},
-};
-
+// selection is not under test here, so the file-list callbacks are inert: the real
+// ones reach the bridge, which no DOM test has.
 const noopFileListCb = {
   onSelectFile: () => {},
   onSelectOverview: () => {},
 };
-
-function goodAnchor(line: number): Anchor {
-  return { blob: "x", line_number: line, offset: 0, context: ["ctx"] };
-}
+import { renderDiff } from "./hunks.ts";
+import { renderOverview } from "./overview.ts";
+import { applyMutation } from "./mutate.ts";
+import { createCommentThread } from "./comments.ts";
+import { state } from "./state.ts";
+import type { Comment, DiffFile } from "../core/types.ts";
+import { LineAdded, localSourceID } from "../core/types.ts";
 
 function local(over: Partial<Comment> = {}): Comment {
   return {
@@ -37,6 +26,8 @@ function local(over: Partial<Comment> = {}): Comment {
     author: "Test User",
     content: "a local note",
     status: "active",
+    line: 0,
+    outdated: false,
     ...over,
   };
 }
@@ -47,7 +38,9 @@ function imported(over: Partial<Comment> = {}): Comment {
     author: "review-bot (bot)",
     content: "an imported finding",
     status: "active",
-    origin: { source: "bb:1430", foreign_id: "856483458" },
+    line: 0,
+    outdated: false,
+    origin: "bb:1430",
     ...over,
   };
 }
@@ -57,6 +50,8 @@ function oneLineFile(path: string, line: number): DiffFile {
   return {
     Path: path,
     Binary: false,
+    Renamed: false,
+    OldPath: "",
     Hunks: [{
       OldStart: line,
       OldLines: 1,
@@ -80,7 +75,7 @@ function buttonTexts(elem: Element): string[] {
 
 Deno.test("comment thread: an imported comment offers no Edit or Delete", () => {
   setupDom();
-  const given = imported({ anchors: [goodAnchor(1)] });
+  const given = imported({ line: 1 });
   state.commentsCache.set("a.go", [given]);
   state.sources = [{
     id: "bb:1430",
@@ -91,7 +86,7 @@ Deno.test("comment thread: an imported comment offers no Edit or Delete", () => 
     imported_at: "t1",
   }];
 
-  const thread = createCommentThread("a.go", [given], noopActions);
+  const thread = createCommentThread("a.go", [given]);
   const actual = buttonTexts(thread);
 
   assertEquals(actual.includes("Edit"), false);
@@ -103,10 +98,10 @@ Deno.test("comment thread: an imported comment offers no Edit or Delete", () => 
 
 Deno.test("comment thread: a local comment keeps Edit and Delete", () => {
   setupDom();
-  const given = local({ anchors: [goodAnchor(1)] });
+  const given = local({ line: 1 });
   state.commentsCache.set("a.go", [given]);
 
-  const actual = buttonTexts(createCommentThread("a.go", [given], noopActions));
+  const actual = buttonTexts(createCommentThread("a.go", [given]));
 
   assertEquals(actual.includes("Edit"), true);
   assertEquals(actual.includes("Delete"), true);
@@ -114,7 +109,7 @@ Deno.test("comment thread: a local comment keeps Edit and Delete", () => {
 
 Deno.test("comment thread: an imported comment names its source", () => {
   setupDom();
-  const given = imported({ anchors: [goodAnchor(1)] });
+  const given = imported({ line: 1 });
   state.commentsCache.set("a.go", [given]);
   state.sources = [{
     id: "bb:1430",
@@ -125,7 +120,7 @@ Deno.test("comment thread: an imported comment names its source", () => {
     imported_at: "t1",
   }];
 
-  const thread = createCommentThread("a.go", [given], noopActions);
+  const thread = createCommentThread("a.go", [given]);
   const origin = thread.querySelector(".comment-origin");
   if (!origin) {
     throw new Error("expected the imported comment to name its source");
@@ -135,10 +130,10 @@ Deno.test("comment thread: an imported comment names its source", () => {
 
 Deno.test("comment thread: an imported comment carries the foreign class", () => {
   setupDom();
-  const given = imported({ anchors: [goodAnchor(1)] });
+  const given = imported({ line: 1 });
   state.commentsCache.set("a.go", [given]);
 
-  const thread = createCommentThread("a.go", [given], noopActions);
+  const thread = createCommentThread("a.go", [given]);
 
   assert(
     thread.querySelector(".comment-foreign"),
@@ -150,11 +145,11 @@ Deno.test("comment thread: an imported comment carries the foreign class", () =>
 // extend to it.
 Deno.test("comment thread: a local reply under an imported root keeps Edit and Delete", () => {
   setupDom();
-  const root = imported({ anchors: [goodAnchor(1)] });
+  const root = imported({ line: 1 });
   const reply = local({ id: "reply-1", parent_id: "imported-1" });
   state.commentsCache.set("a.go", [root, reply]);
 
-  const thread = createCommentThread("a.go", [root], noopActions);
+  const thread = createCommentThread("a.go", [root]);
   const replyElem = thread.querySelector(".comment-reply");
   if (!replyElem) {
     throw new Error("expected the reply to render");
@@ -167,16 +162,16 @@ Deno.test("comment thread: a local reply under an imported root keeps Edit and D
 Deno.test("diff: hiding a source removes its thread from the rendered lines", () => {
   const doc = setupDom();
   state.diffFiles = [oneLineFile("a.go", 4)];
-  state.commentsCache.set("a.go", [imported({ anchors: [goodAnchor(4)] })]);
+  state.commentsCache.set("a.go", [imported({ line: 4 })]);
 
-  renderDiff("a.go", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("a.go");
   assert(
     doc.querySelector(".comment-thread"),
     "expected the imported thread to render while visible",
   );
 
   state.hiddenSources = new Set(["bb:1430"]);
-  renderDiff("a.go", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("a.go");
 
   assertEquals(
     doc.querySelectorAll(".comment-thread").length,
@@ -188,10 +183,10 @@ Deno.test("diff: hiding a source removes its thread from the rendered lines", ()
 Deno.test("diff: hiding local feedback leaves a visible imported thread in place", () => {
   const doc = setupDom();
   state.diffFiles = [oneLineFile("a.go", 4)];
-  state.commentsCache.set("a.go", [imported({ anchors: [goodAnchor(4)] })]);
+  state.commentsCache.set("a.go", [imported({ line: 4 })]);
   state.hiddenSources = new Set([localSourceID]);
 
-  renderDiff("a.go", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("a.go");
 
   assert(
     doc.querySelector(".comment-thread"),
@@ -201,8 +196,14 @@ Deno.test("diff: hiding local feedback leaves a visible imported thread in place
 
 Deno.test("file list: a file whose only comments are hidden shows no pill", () => {
   const doc = setupDom();
-  state.diffFiles = [{ Path: "a.go", Hunks: [], Binary: false }];
-  state.commentsCache.set("a.go", [imported({ anchors: [goodAnchor(1)] })]);
+  state.diffFiles = [{
+    Path: "a.go",
+    Hunks: [],
+    Binary: false,
+    Renamed: false,
+    OldPath: "",
+  }];
+  state.commentsCache.set("a.go", [imported({ line: 1 })]);
 
   renderFileList(noopFileListCb);
   let item = doc.querySelector("#files .file-item");
@@ -227,10 +228,16 @@ Deno.test("file list: a file whose only comments are hidden shows no pill", () =
 // the pill must describe the visible subset, not the whole comment list.
 Deno.test("file list: a mixed file's pill reflects only the visible source", () => {
   const doc = setupDom();
-  state.diffFiles = [{ Path: "a.go", Hunks: [], Binary: false }];
+  state.diffFiles = [{
+    Path: "a.go",
+    Hunks: [],
+    Binary: false,
+    Renamed: false,
+    OldPath: "",
+  }];
   state.commentsCache.set("a.go", [
-    imported({ id: "i-1", status: "active", anchors: [goodAnchor(1)] }),
-    local({ id: "l-1", status: "resolved", anchors: [goodAnchor(2)] }),
+    imported({ id: "i-1", status: "active", line: 1 }),
+    local({ id: "l-1", status: "resolved", line: 2 }),
   ]);
   state.hiddenSources = new Set(["bb:1430"]);
 
@@ -253,12 +260,7 @@ Deno.test("overview: hiding a source removes its review-level thread", async () 
   state.commentsCache.set("", [reviewComment]);
   state.hiddenSources = new Set(["bb:1430"]);
 
-  await renderOverview([reviewComment], [], {
-    diff: { actions: noopActions, onAddComment: () => {} },
-    actions: noopActions,
-    onSelectFile: () => {},
-    onAddReviewComment: () => {},
-  });
+  await renderOverview([reviewComment], []);
 
   assertEquals(
     doc.querySelectorAll(".overview-review .comment").length,
@@ -272,12 +274,7 @@ Deno.test("overview: a visible review-level thread still renders", async () => {
   const reviewComment = imported({ id: "top-1" });
   state.commentsCache.set("", [reviewComment]);
 
-  await renderOverview([reviewComment], [], {
-    diff: { actions: noopActions, onAddComment: () => {} },
-    actions: noopActions,
-    onSelectFile: () => {},
-    onAddReviewComment: () => {},
-  });
+  await renderOverview([reviewComment], []);
 
   assert(
     doc.querySelector(".overview-review .comment"),
@@ -289,17 +286,12 @@ Deno.test("overview: a visible review-level thread still renders", async () => {
 // drops out of the overview rather than appearing with an empty body.
 Deno.test("overview: a file whose comments are all hidden is not listed", async () => {
   const doc = setupDom();
-  const fileComment = imported({ anchors: [goodAnchor(4)] });
+  const fileComment = imported({ line: 4 });
   state.diffFiles = [oneLineFile("a.go", 4)];
   state.commentsCache.set("a.go", [fileComment]);
   state.hiddenSources = new Set(["bb:1430"]);
 
-  await renderOverview([], [{ path: "a.go", comments: [fileComment] }], {
-    diff: { actions: noopActions, onAddComment: () => {} },
-    actions: noopActions,
-    onSelectFile: () => {},
-    onAddReviewComment: () => {},
-  });
+  await renderOverview([], [{ path: "a.go", comments: [fileComment] }]);
 
   // the review-level section is always present; no per-file section should be.
   assertEquals(
@@ -311,16 +303,11 @@ Deno.test("overview: a file whose comments are all hidden is not listed", async 
 
 Deno.test("overview: a file with a visible comment is listed", async () => {
   const doc = setupDom();
-  const fileComment = imported({ anchors: [goodAnchor(4)] });
+  const fileComment = imported({ line: 4 });
   state.diffFiles = [oneLineFile("a.go", 4)];
   state.commentsCache.set("a.go", [fileComment]);
 
-  await renderOverview([], [{ path: "a.go", comments: [fileComment] }], {
-    diff: { actions: noopActions, onAddComment: () => {} },
-    actions: noopActions,
-    onSelectFile: () => {},
-    onAddReviewComment: () => {},
-  });
+  await renderOverview([], [{ path: "a.go", comments: [fileComment] }]);
 
   assertEquals(
     doc.querySelectorAll(".overview-file:not(.overview-review)").length,
@@ -337,22 +324,17 @@ Deno.test("diff: hiding a source removes its untethered comments", () => {
   state.diffFiles = [oneLineFile("a.go", 4)];
   // an adrift anchor with a last-good window: the comment renders untethered.
   state.commentsCache.set("a.go", [
-    imported({
-      anchors: [
-        { blob: "x", line_number: 4, offset: 0, context: ["gone"] },
-        { blob: "y", line_number: 0 },
-      ],
-    }),
+    imported({ line: 0, outdated: true, context: ["gone"] }),
   ]);
 
-  renderDiff("a.go", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("a.go");
   assert(
     doc.querySelector(".outdated-comments"),
     "expected the untethered block while the source is visible",
   );
 
   state.hiddenSources = new Set(["bb:1430"]);
-  renderDiff("a.go", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("a.go");
 
   assertEquals(
     doc.querySelectorAll(".outdated-comments").length,
@@ -367,8 +349,14 @@ Deno.test("diff: hiding a source removes its untethered comments", () => {
 // for hidden feedback on the next mutation.
 Deno.test("mutation: the pill reflects visible sources, not the backend's status", () => {
   const doc = setupDom();
-  state.diffFiles = [{ Path: "a.go", Hunks: [], Binary: false }];
-  state.commentsCache.set("a.go", [imported({ anchors: [goodAnchor(1)] })]);
+  state.diffFiles = [{
+    Path: "a.go",
+    Hunks: [],
+    Binary: false,
+    Renamed: false,
+    OldPath: "",
+  }];
+  state.commentsCache.set("a.go", [imported({ line: 1 })]);
   state.hiddenSources = new Set(["bb:1430"]);
   renderFileList(noopFileListCb);
 
@@ -376,9 +364,9 @@ Deno.test("mutation: the pill reflects visible sources, not the backend's status
   applyMutation({
     file_path: "a.go",
     line_number: 1,
-    comments: [imported({ anchors: [goodAnchor(1)] })],
+    comments: [imported({ line: 1 })],
     file_status: "active",
-  }, { actions: noopActions, rebuildOverview: () => {} });
+  });
 
   const item = doc.querySelector("#files .file-item");
   if (!item) {
@@ -393,16 +381,22 @@ Deno.test("mutation: the pill reflects visible sources, not the backend's status
 
 Deno.test("mutation: the pill is applied when the source is visible", () => {
   const doc = setupDom();
-  state.diffFiles = [{ Path: "a.go", Hunks: [], Binary: false }];
-  state.commentsCache.set("a.go", [imported({ anchors: [goodAnchor(1)] })]);
+  state.diffFiles = [{
+    Path: "a.go",
+    Hunks: [],
+    Binary: false,
+    Renamed: false,
+    OldPath: "",
+  }];
+  state.commentsCache.set("a.go", [imported({ line: 1 })]);
   renderFileList(noopFileListCb);
 
   applyMutation({
     file_path: "a.go",
     line_number: 1,
-    comments: [imported({ anchors: [goodAnchor(1)] })],
+    comments: [imported({ line: 1 })],
     file_status: "active",
-  }, { actions: noopActions, rebuildOverview: () => {} });
+  });
 
   const item = doc.querySelector("#files .file-item");
   if (!item) {
@@ -420,12 +414,12 @@ Deno.test("diff: a mixed file loses only the hidden source's threads", () => {
   const doc = setupDom();
   state.diffFiles = [oneLineFile("a.go", 4)];
   state.commentsCache.set("a.go", [
-    imported({ id: "i-1", anchors: [goodAnchor(4)] }),
-    local({ id: "l-1", anchors: [goodAnchor(4)] }),
+    imported({ id: "i-1", line: 4 }),
+    local({ id: "l-1", line: 4 }),
   ]);
   state.hiddenSources = new Set(["bb:1430"]);
 
-  renderDiff("a.go", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("a.go");
 
   const comments = doc.querySelectorAll(".comment-thread .comment");
   assertEquals(comments.length, 1, "expected only the local comment to render");
@@ -442,12 +436,12 @@ Deno.test("diff: a local reply renders under a visible imported root when local 
   const doc = setupDom();
   state.diffFiles = [oneLineFile("a.go", 4)];
   state.commentsCache.set("a.go", [
-    imported({ id: "i-1", anchors: [goodAnchor(4)] }),
+    imported({ id: "i-1", line: 4 }),
     local({ id: "r-1", parent_id: "i-1" }),
   ]);
   state.hiddenSources = new Set([localSourceID]);
 
-  renderDiff("a.go", { actions: noopActions, onAddComment: () => {} });
+  renderDiff("a.go");
 
   assert(
     doc.querySelector(".comment-reply"),

@@ -1,86 +1,124 @@
 // renders comment threads (root comments and their nested replies) with full
 // edit/delete/reply/status actions. The threading and authorship *decisions*
 // come from the pure core (`getReplies`, `threadAuthors`, `authorLabel`); this
-// module only builds the DOM from those results and wires the action callbacks.
+// module builds the DOM from those results and wires the actions straight to
+// the modal/mutation handlers in `modals.ts`.
 
 import type { Comment } from "../core/types.ts";
 import {
   authorLabel,
   getReplies,
   isForeign,
-  lastGoodContext,
   outdatedComments,
   threadAuthors,
+  topLevelComments,
 } from "../core/comments.ts";
 import { el } from "../dom.ts";
 import { commentsFor, state } from "./state.ts";
-
-// the action callbacks a comment thread needs. Supplied by the surface that
-// renders the thread (file page or overview) so the same rendering routes
-// actions to the right place via the file path it was built with.
-export interface CommentActions {
-  onReply: (filePath: string, commentID: string) => void;
-  onEdit: (filePath: string, commentID: string, content: string) => void;
-  onResolve: (filePath: string, commentID: string) => void;
-  onIgnore: (filePath: string, commentID: string) => void;
-  onReactivate: (filePath: string, commentID: string) => void;
-  onDelete: (filePath: string, commentID: string) => void;
-}
+import {
+  deleteComment,
+  ignoreComment,
+  reactivateComment,
+  resolveComment,
+  showEditCommentModal,
+  showFileCommentModal,
+  showReplyModal,
+} from "./modals.ts";
 
 // build a comment thread element for the given root comments. Replies nest
 // within each root via the shared rendering.
 export function createCommentThread(
   filePath: string,
   comments: Comment[],
-  actions: CommentActions,
 ): HTMLElement {
   const thread = el("div", { classes: ["comment-thread"] });
   for (const comment of comments) {
     const multipleAuthors =
       threadAuthors(commentsFor(filePath), comment).size > 1;
     thread.appendChild(
-      createCommentElement(filePath, comment, multipleAuthors, actions),
+      createCommentElement(filePath, comment, multipleAuthors),
     );
   }
   return thread;
 }
 
-// build the untethered block for every outdated root comment in `comments`, or
-// null when none are outdated. Each block shows the comment's last captured
-// context as a read-only pseudo-hunk with a warning border (no line numbers, no
-// expand affordance) followed by the comment thread. The container carries
-// `data-outdated` so an incremental update can find and replace it. Intended to
-// render at the top of the file view, above the live hunks.
+// build the top-of-file block for a file's top-level (anchorless) comments: an
+// optional "Add comment" button followed by each top-level comment's thread.
+// It renders at the very top of the file view, above the untethered block and
+// the code.
+//
+// `withAddButton` (single-file view) always shows an "Add comment" control, so
+// the block is present even with no comments yet; without it (overview,
+// read-only) the block renders only when there are top-level comments,
+// returning null otherwise.
+export function topLevelCommentsBlock(
+  filePath: string,
+  comments: Comment[],
+  withAddButton: boolean,
+): HTMLElement | null {
+  const topLevel = topLevelComments(comments);
+  if (!withAddButton && topLevel.length === 0) {
+    return null;
+  }
+
+  const container = el("div", { classes: ["top-level-comments"] });
+  container.setAttribute("data-toplevel", filePath);
+
+  if (withAddButton) {
+    container.appendChild(
+      el("button", {
+        classes: ["top-level-add-comment"],
+        text: "Add comment",
+        attrs: { title: "Add a comment about this file" },
+        onClick: () => showFileCommentModal(filePath),
+      }),
+    );
+  }
+
+  if (topLevel.length > 0) {
+    container.appendChild(createCommentThread(filePath, topLevel));
+  }
+
+  return container;
+}
+
+// build the untethered block: every outdated root comment, plus any live
+// anchored comment whose line cannot be shown in a window (`unplaceable` —
+// e.g. a line beyond the end of the file). Returns null when there are none.
+// Each item shows the comment's last captured context as a read-only
+// pseudo-hunk with a warning border (no line numbers, no grow affordance)
+// followed by the comment thread. An unplaceable live comment keeps its anchor
+// untouched: rendering here is a fallback, not a state change. Intended to
+// render at the top of the file view, above the windows.
 export function outdatedCommentsBlock(
   filePath: string,
   comments: Comment[],
-  actions: CommentActions,
+  unplaceable: Comment[] = [],
 ): HTMLElement | null {
-  const outdated = outdatedComments(comments);
-  if (outdated.length === 0) {
+  const untethered = [...outdatedComments(comments), ...unplaceable];
+  if (untethered.length === 0) {
     return null;
   }
 
   const container = el("div", { classes: ["outdated-comments"] });
   container.setAttribute("data-outdated", filePath);
-  for (const comment of outdated) {
-    container.appendChild(outdatedCommentItem(filePath, comment, actions));
+  for (const comment of untethered) {
+    container.appendChild(outdatedCommentItem(filePath, comment));
   }
   return container;
 }
 
-// one outdated comment: its captured context as a read-only pseudo-hunk followed
-// by the comment thread, wrapped so the warning styling applies to both. The
-// `data-comment` attribute lets an incremental update target this single item.
+// one untethered comment: its captured context as a read-only pseudo-hunk
+// followed by the comment thread, wrapped so the warning styling applies to
+// both.
 function outdatedCommentItem(
   filePath: string,
   comment: Comment,
-  actions: CommentActions,
 ): HTMLElement {
   const item = el("div", { classes: ["outdated-comment"] });
   item.setAttribute("data-comment", comment.id);
 
-  const context = lastGoodContext(comment);
+  const context = comment.context ?? [];
   if (context.length > 0) {
     const hunk = el("div", { classes: ["outdated-hunk"] });
     for (const line of context) {
@@ -91,20 +129,18 @@ function outdatedCommentItem(
     item.appendChild(hunk);
   }
 
-  item.appendChild(createCommentThread(filePath, [comment], actions));
+  item.appendChild(createCommentThread(filePath, [comment]));
   return item;
 }
 
-// a line-anchored comment thread carrying a `data-line` attribute, so an
-// incremental update can find and replace exactly this thread without
-// re-rendering the diff.
+// a line-anchored comment thread carrying a `data-line` attribute, so tests
+// and navigation can find the thread for a line.
 export function lineCommentThread(
   filePath: string,
   lineNo: number,
   comments: Comment[],
-  actions: CommentActions,
 ): HTMLElement {
-  const thread = createCommentThread(filePath, comments, actions);
+  const thread = createCommentThread(filePath, comments);
   thread.setAttribute("data-line", String(lineNo));
   return thread;
 }
@@ -121,7 +157,6 @@ function createCommentElement(
   filePath: string,
   comment: Comment,
   multipleAuthors: boolean,
-  actions: CommentActions,
 ): HTMLElement {
   const isReply = !!comment.parent_id;
   const commentID = comment.id;
@@ -152,7 +187,7 @@ function createCommentElement(
     header.appendChild(
       el("span", {
         classes: ["comment-origin"],
-        text: sourceLabel(comment.origin?.source ?? ""),
+        text: sourceLabel(comment.origin ?? ""),
       }),
     );
   }
@@ -168,7 +203,7 @@ function createCommentElement(
       const repliesElem = el("div", { classes: ["comment-replies"] });
       for (const reply of replies) {
         repliesElem.appendChild(
-          createCommentElement(filePath, reply, multipleAuthors, actions),
+          createCommentElement(filePath, reply, multipleAuthors),
         );
       }
       elem.appendChild(repliesElem);
@@ -183,7 +218,7 @@ function createCommentElement(
     actionsElem.appendChild(
       el("button", {
         text: "Reply",
-        onClick: () => actions.onReply(filePath, commentID),
+        onClick: () => showReplyModal(filePath, commentID),
       }),
     );
   }
@@ -192,7 +227,8 @@ function createCommentElement(
     actionsElem.appendChild(
       el("button", {
         text: "Edit",
-        onClick: () => actions.onEdit(filePath, commentID, comment.content),
+        onClick: () =>
+          showEditCommentModal(filePath, commentID, comment.content),
       }),
     );
   }
@@ -201,20 +237,20 @@ function createCommentElement(
       actionsElem.appendChild(
         el("button", {
           text: "Resolve",
-          onClick: () => actions.onResolve(filePath, commentID),
+          onClick: () => void resolveComment(filePath, commentID),
         }),
       );
       actionsElem.appendChild(
         el("button", {
           text: "Ignore",
-          onClick: () => actions.onIgnore(filePath, commentID),
+          onClick: () => void ignoreComment(filePath, commentID),
         }),
       );
     } else {
       actionsElem.appendChild(
         el("button", {
           text: "Reactivate",
-          onClick: () => actions.onReactivate(filePath, commentID),
+          onClick: () => void reactivateComment(filePath, commentID),
         }),
       );
     }
@@ -224,7 +260,7 @@ function createCommentElement(
       el("button", {
         classes: ["delete-btn"],
         text: "Delete",
-        onClick: () => actions.onDelete(filePath, commentID),
+        onClick: () => void deleteComment(filePath, commentID),
       }),
     );
   }

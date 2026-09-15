@@ -15,6 +15,8 @@ function local(id: string, parentID?: string): Comment {
     author: "Test User",
     content: "local",
     status: "active",
+    line: 0,
+    outdated: false,
   };
 }
 
@@ -25,7 +27,9 @@ function imported(id: string, source: string, parentID?: string): Comment {
     author: "review-bot (bot)",
     content: "imported",
     status: "active",
-    origin: { source, foreign_id: "f-" + id },
+    line: 0,
+    outdated: false,
+    origin: source,
   };
 }
 

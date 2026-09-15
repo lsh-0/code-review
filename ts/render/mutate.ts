@@ -1,78 +1,38 @@
-// comment mutations and their incremental view updates. A mutation
-// returns the affected file's full comment list and the recomputed file status;
-// the cache is overwritten from it and only the touched thread is re-rendered,
-// preserving the diff's expanded context and scroll. The overview, having no
-// diff state to preserve, is rebuilt wholesale.
+// comment mutations land here: the affected surface's cache is overwritten
+// from the mutation result and its region re-rendered from state. Window state
+// (growth, revealed lines) survives the re-render because it lives in state,
+// not the DOM; a comment placed outside the current windows gains its island
+// during the region render.
 
 import type { CommentMutationResult } from "../core/types.ts";
-import { fileCommentStatus, getCommentsForLine } from "../core/comments.ts";
-import { byId } from "../dom.ts";
-import {
-  type CommentActions,
-  lineCommentThread,
-  outdatedCommentsBlock,
-} from "./comments.ts";
+import { fileCommentStatus } from "../core/comments.ts";
 import { setFileStatusPill } from "./filelist.ts";
 import { commentsFor, state } from "./state.ts";
+import { rebuildOverview, rerenderFileRegion } from "./view.ts";
 
-// the surface callbacks a mutation needs: the comment actions threaded into
-// re-rendered threads, and an overview rebuild for when the overview is active.
-export interface MutationContext {
-  actions: CommentActions;
-  rebuildOverview: () => void;
-}
-
-// the DOM region a file's diff occupies: its `[data-file]` section in the
-// combined (multi-file) view, or the whole `#diff-content` in the single-file
-// view (which renders sectionless). Scoping line/thread queries to this region
-// keeps a line number that recurs across stacked files unambiguous.
-function fileRegion(filePath: string): Element | null {
-  const content = byId("diff-content");
-  if (!content) {
-    return null;
-  }
-  return content.querySelector(
-    `.diff-file-section[data-file="${cssEscape(filePath)}"]`,
-  ) ?? content;
-}
-
-// escape a string for safe use in a CSS attribute selector. File paths contain
-// `/` and `.`, which are selector-safe, but quotes or other metacharacters in a
-// path would break the `[data-file="…"]` query; escaping guards against that.
-function cssEscape(value: string): string {
-  const cssApi = (globalThis as { CSS?: { escape?: (s: string) => string } })
-    .CSS;
-  if (cssApi?.escape) {
-    return cssApi.escape(value);
-  }
-  // fallback for the test shim, which has no `CSS.escape`: escape the quote and
-  // backslash that would otherwise terminate or corrupt the quoted selector.
-  return value.replace(/["\\]/g, "\\$&");
-}
-
-// apply a mutation result incrementally. The affected file's cache is
-// overwritten, then either the overview is rebuilt (if active) or the touched
-// thread is patched and the file's status pill updated.
+// apply a mutation result: overwrite the surface's comment cache, then rebuild
+// the overview (if active) or re-render the file's region and refresh its
+// status pill. A review-level mutation (empty path) outside the overview has
+// no region to touch.
 //
 // The pill is recomputed from the visible cache rather than taken from the
 // result's `file_status`: the backend computes that over every comment and has no
 // knowledge of which sources the reviewer has hidden, so using it would restore a
 // pill for hidden feedback on the next mutation. The two agree whenever nothing is
 // hidden.
-export function applyMutation(
-  result: CommentMutationResult,
-  ctx: MutationContext,
-): void {
+export function applyMutation(result: CommentMutationResult): void {
   state.commentsCache.set(result.file_path, result.comments);
 
   if (state.overviewActive) {
-    ctx.rebuildOverview();
+    rebuildOverview();
+    return;
+  }
+  if (result.file_path === "") {
     return;
   }
 
-  patchLineThread(result.file_path, result.line_number, ctx.actions);
-  patchOutdatedBlock(result.file_path, ctx.actions);
   setFileStatusPill(result.file_path, visibleFileStatus(result.file_path));
+  rerenderFileRegion(result.file_path);
 }
 
 // the file's comment-status pill from its visible comments, matching how the file
@@ -80,80 +40,4 @@ export function applyMutation(
 function visibleFileStatus(filePath: string): string {
   const comments = commentsFor(filePath);
   return comments.length === 0 ? "none" : fileCommentStatus(comments);
-}
-
-// rebuild the untethered outdated-comments block at the top of the file view
-// from the updated cache. Outdated comments carry no live line, so they cannot
-// be targeted by line like an anchored thread; the block is small, so it is
-// re-derived wholesale. Removed when no outdated comments remain (e.g. the last
-// outdated comment was deleted).
-function patchOutdatedBlock(filePath: string, actions: CommentActions): void {
-  const region = fileRegion(filePath);
-  if (!region) {
-    return;
-  }
-
-  const existing = region.querySelector(
-    `.outdated-comments[data-outdated="${cssEscape(filePath)}"]`,
-  );
-  const block = outdatedCommentsBlock(filePath, commentsFor(filePath), actions);
-
-  if (!block) {
-    existing?.remove();
-    return;
-  }
-
-  if (existing) {
-    existing.parentNode?.replaceChild(block, existing);
-    return;
-  }
-
-  // no block yet: insert at the very top of the file's region. In the combined
-  // view that is after the section header; `renderFileHunks` likewise inserts
-  // the block as the first content under the header, so this matches.
-  const header = region.querySelector(".diff-file-section-header");
-  region.insertBefore(block, header ? header.nextSibling : region.firstChild);
-}
-
-// re-render just the thread anchored at `lineNo` from the (already updated)
-// cache: replace the existing thread, insert a new one after the line, or
-// remove it when the line has no comments left.
-function patchLineThread(
-  filePath: string,
-  lineNo: number,
-  actions: CommentActions,
-): void {
-  const region = fileRegion(filePath);
-  if (!region) {
-    return;
-  }
-
-  const existing = region.querySelector(
-    `.comment-thread[data-line="${lineNo}"]`,
-  );
-  const comments = getCommentsForLine(commentsFor(filePath), lineNo);
-  const line = region.querySelector<HTMLElement>(
-    `.diff-line[data-line="${lineNo}"]`,
-  );
-
-  if (comments.length === 0) {
-    existing?.remove();
-    // the last comment on this line is gone, so the line is no longer commented.
-    line?.classList.remove("commented");
-    return;
-  }
-
-  line?.classList.add("commented");
-
-  const thread = lineCommentThread(filePath, lineNo, comments, actions);
-
-  if (existing) {
-    existing.parentNode?.replaceChild(thread, existing);
-    return;
-  }
-
-  // no thread yet: insert immediately after the diff line it anchors.
-  if (line) {
-    line.parentNode?.insertBefore(thread, line.nextSibling);
-  }
 }

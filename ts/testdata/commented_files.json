@@ -2,43 +2,30 @@
   {
     "comments": [
       {
-        "anchors": [
-          {
-            "blob": "blob-a",
-            "context": [
-              "before",
-              "the line",
-              "after"
-            ],
-            "line_number": 7,
-            "offset": 1
-          }
-        ],
         "author": "Test User",
         "content": "a note",
-        "id": "a48a95cf2b874fbf",
+        "context": [
+          "before",
+          "the line",
+          "after"
+        ],
+        "id": "1d4b3cf3cc3d8ebe",
+        "line": 7,
+        "outdated": false,
         "status": "active"
       },
       {
-        "anchors": [
-          {
-            "blob": "blob-a",
-            "context": [
-              "before",
-              "the line",
-              "after"
-            ],
-            "line_number": 9,
-            "offset": 1
-          }
-        ],
         "author": "review-bot (bot)",
         "content": "an imported finding",
-        "id": "79f9a2fce0440656",
-        "origin": {
-          "foreign_id": "856483458",
-          "source": "bb:1430"
-        },
+        "context": [
+          "before",
+          "the line",
+          "after"
+        ],
+        "id": "61dcaf5cc53129d6",
+        "line": 9,
+        "origin": "bb:1430",
+        "outdated": false,
         "status": "active"
       }
     ],

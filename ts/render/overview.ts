@@ -7,17 +7,12 @@ import type { Comment, CommentedFile } from "../core/types.ts";
 import { rootComments, visibleComments } from "../core/comments.ts";
 import { byId, clear, el } from "../dom.ts";
 import { browseFile } from "../client.ts";
-import { type CommentActions, createCommentThread } from "./comments.ts";
-import { type DiffCallbacks, renderFileHunks } from "./hunks.ts";
+import { createCommentThread } from "./comments.ts";
+import { renderFileHunks } from "./hunks.ts";
 import { ensureFileDiffs } from "./load.ts";
+import { showReviewCommentModal } from "./modals.ts";
+import { selectFile } from "./view.ts";
 import { state } from "./state.ts";
-
-export interface OverviewCallbacks {
-  diff: DiffCallbacks;
-  actions: CommentActions;
-  onSelectFile: (filePath: string) => void;
-  onAddReviewComment: () => void;
-}
 
 // render the overview into #diff-content. The commented files' hunks are
 // fetched first (independently) so the real diff renders with comments embedded,
@@ -25,10 +20,9 @@ export interface OverviewCallbacks {
 export async function renderOverview(
   reviewComments: Comment[],
   files: CommentedFile[],
-  cb: OverviewCallbacks,
 ): Promise<void> {
   await ensureFileDiffs(files.map((f) => f.path));
-  renderOverviewContent(reviewComments, files, cb);
+  renderOverviewContent(reviewComments, files);
 }
 
 // render the overview's sections from the loaded data.
@@ -41,7 +35,6 @@ export async function renderOverview(
 function renderOverviewContent(
   reviewComments: Comment[],
   files: CommentedFile[],
-  cb: OverviewCallbacks,
 ): void {
   const content = byId("diff-content");
   if (!content) {
@@ -50,17 +43,14 @@ function renderOverviewContent(
   clear(content);
 
   content.appendChild(
-    overviewReviewSection(
-      visibleComments(reviewComments, state.hiddenSources),
-      cb,
-    ),
+    overviewReviewSection(visibleComments(reviewComments, state.hiddenSources)),
   );
 
   for (const file of visibleCommentedFiles(files)) {
     const section = el("div", { classes: ["overview-file"] });
-    section.appendChild(overviewFileHeader(file.path, cb));
+    section.appendChild(overviewFileHeader(file.path));
     // only this file's commented hunks, read-only, threads embedded.
-    renderFileHunks(section, file.path, cb.diff, true);
+    renderFileHunks(section, file.path, true);
     content.appendChild(section);
   }
 }
@@ -79,10 +69,7 @@ function visibleCommentedFiles(files: CommentedFile[]): CommentedFile[] {
 // the review-level feedback section: a heading, an "add comment" control, and
 // any existing review comments threaded (routed to the review level via the
 // empty file path).
-function overviewReviewSection(
-  reviewComments: Comment[],
-  cb: OverviewCallbacks,
-): HTMLElement {
+function overviewReviewSection(reviewComments: Comment[]): HTMLElement {
   const section = el("div", { classes: ["overview-file", "overview-review"] });
 
   const heading = el("div", { classes: ["overview-file-header"] });
@@ -98,16 +85,14 @@ function overviewReviewSection(
     el("button", {
       classes: ["overview-add-comment"],
       text: "Add comment",
-      onClick: () => cb.onAddReviewComment(),
+      onClick: () => showReviewCommentModal(),
     }),
   );
 
   if (reviewComments.length > 0) {
     // review comments are keyed under the empty path; their handlers pass "" as
     // the file, routing status/reply/delete to the review level.
-    section.appendChild(
-      createCommentThread("", rootComments(reviewComments), cb.actions),
-    );
+    section.appendChild(createCommentThread("", rootComments(reviewComments)));
   }
 
   return section;
@@ -115,10 +100,7 @@ function overviewReviewSection(
 
 // an overview file section header: the filename (linking to that file's page)
 // and a "browse" button to open it in the OS-preferred application.
-function overviewFileHeader(
-  filePath: string,
-  cb: OverviewCallbacks,
-): HTMLElement {
+function overviewFileHeader(filePath: string): HTMLElement {
   const header = el("div", { classes: ["overview-file-header"] });
 
   header.appendChild(
@@ -126,7 +108,7 @@ function overviewFileHeader(
       classes: ["overview-file-name"],
       text: filePath,
       attrs: { title: "Open this file's page" },
-      onClick: () => cb.onSelectFile(filePath),
+      onClick: () => void selectFile(filePath),
     }),
   );
 

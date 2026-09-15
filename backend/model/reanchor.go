@@ -2,11 +2,11 @@ package model
 
 import "strings"
 
-// a new-side diff line the reconciler can match against: its raw content and the
-// new-file line number it sits at. The caller flattens the parsed diff into
-// these (one per non-removed line) so the model stays decoupled from the diff
-// parser. A matched window's anchored line reports the `LineNumber` of the ref
-// at its offset.
+// a line the reconciler can match against: its raw content and the new-file
+// line number it sits at. The caller flattens the file's full content at the
+// head revision into these (one per line, numbered from 1) so the model stays
+// decoupled from the file source. A matched window's anchored line reports the
+// `LineNumber` of the ref at its offset.
 type DiffLineRef struct {
 	Content    string
 	LineNumber int
@@ -20,29 +20,30 @@ type DiffLineRef struct {
 const fuzzyMatchThreshold = 0.7
 
 // re-anchor every comment against its file's current content. `currentBlobs`
-// maps file path to the file's current git blob SHA; `diffLines` maps file path
-// to the new-side line contents present in the recomputed diff. For each
-// commented file the comments are reconciled in place against that file's
-// current blob and diff lines.
+// maps file path to the file's current git blob SHA; `fileLines` maps file path
+// to the file's full line contents at the head revision. For each commented
+// file the comments are reconciled in place against that file's current blob
+// and lines. The whole file is the match target, so only content genuinely gone
+// from the file leaves a comment adrift.
 //
 // Pure: it mutates only the comments reachable from the review, deriving every
 // decision from its inputs, so it is testable without git. A file absent from
 // `currentBlobs` (deleted, or carrying no comments) is skipped.
-func (r *Review) ReanchorComments(currentBlobs map[string]string, diffLines map[string][]DiffLineRef) {
+func (r *Review) ReanchorComments(currentBlobs map[string]string, fileLines map[string][]DiffLineRef) {
 	for _, file := range r.Files {
 		blob, present := currentBlobs[file.FilePath]
 		if !present {
 			continue
 		}
-		lines := diffLines[file.FilePath]
+		lines := fileLines[file.FilePath]
 		for _, comment := range file.Comments {
 			reanchorComment(comment, blob, lines)
 		}
 	}
 }
 
-// reconcile a single comment against its file's current `blob` and the new-side
-// `lines` present in the diff, following the strict short-circuit order: an
+// reconcile a single comment against its file's current `blob` and its full
+// `lines` at the head revision, following the strict short-circuit order: an
 // unanchored comment (reply, review-level) is left alone; an unchanged blob is a
 // no-op; a blob already in history is reused; otherwise the last good context is
 // matched (exact, then fuzzy) and a good or adrift anchor is appended.
@@ -113,13 +114,11 @@ func findAnchorByBlob(anchors []Anchor, blob string) *Anchor {
 }
 
 // the radius of the context window captured around an anchored line: this many
-// lines each side, so a fresh window spans up to 2*captureRadius+1 lines.
-//
-// MUST stay equal to the frontend's `captureContextRadius` (ts/core/overview.ts):
-// the frontend captures the window at comment-creation time and this re-captures
-// it on re-anchor, so a re-anchored window must be the same size as a freshly
-// created one. The two constants are independent; keep them in lockstep.
-const captureRadius = 3
+// lines each side, so a fresh window spans up to 2*CaptureRadius+1 lines.
+// Exported because creation-time capture (`captureContext` in the backend) uses
+// the same radius against the same line source, so a freshly created window and
+// a re-anchored one are the same size by construction.
+const CaptureRadius = 3
 
 // build the first anchor for a comment placed directly at `lineNumber` against
 // `blob`, capturing a fresh context window from `lines` at that position.
@@ -130,7 +129,7 @@ const captureRadius = 3
 // same size a reviewer-created anchor captures, so a comment anchored here is
 // indistinguishable to the reconciler from one created locally at that line.
 //
-// This is the entry point an import uses. It lives here, with `captureRadius`,
+// This is the entry point an import uses. It lives here, with `CaptureRadius`,
 // rather than being reimplemented by the caller: the window size must not be
 // copied out of this file.
 func AnchorAtLine(blob string, lineNumber int, lines []DiffLineRef) Anchor {
@@ -166,14 +165,14 @@ func placeContext(context []string, offset int, lines []DiffLineRef) (int, bool)
 }
 
 // a fresh context window from `lines` centred on the anchored line at index
-// `anchored`, spanning `captureRadius` lines each side and clipped at the slice
+// `anchored`, spanning `CaptureRadius` lines each side and clipped at the slice
 // edges. Returns the window's line contents and the anchored line's offset
-// within it (`captureRadius` for an interior line, smaller when clipped at the
+// within it (`CaptureRadius` for an interior line, smaller when clipped at the
 // start). This is what a re-anchored comment stores, so its context witnesses
 // the new content rather than carrying the old window forward.
 func captureWindow(lines []DiffLineRef, anchored int) ([]string, int) {
-	lo := max(anchored-captureRadius, 0)
-	hi := min(anchored+captureRadius, len(lines)-1)
+	lo := max(anchored-CaptureRadius, 0)
+	hi := min(anchored+CaptureRadius, len(lines)-1)
 	window := make([]string, 0, hi-lo+1)
 	for i := lo; i <= hi; i++ {
 		window = append(window, lines[i].Content)

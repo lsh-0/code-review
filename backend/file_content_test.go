@@ -75,6 +75,83 @@ func TestLineCount(t *testing.T) {
 	}
 }
 
+func TestCaptureContext(t *testing.T) {
+	body := "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\n"
+
+	t.Run("interior line captures a full window", func(t *testing.T) {
+		context, offset := captureContext(body, 5)
+		expected := []string{"l2", "l3", "l4", "l5", "l6", "l7", "l8"}
+		if len(context) != len(expected) {
+			t.Fatalf("expected %d lines, got %d: %v", len(expected), len(context), context)
+		}
+		for i := range expected {
+			if context[i] != expected[i] {
+				t.Errorf("line %d: expected %q, got %q", i, expected[i], context[i])
+			}
+		}
+		if offset != 3 {
+			t.Errorf("expected offset 3 (the radius) for an interior line, got %d", offset)
+		}
+	})
+
+	t.Run("line 1 clips the window at the start", func(t *testing.T) {
+		context, offset := captureContext(body, 1)
+		if len(context) != 4 || context[0] != "l1" || context[3] != "l4" {
+			t.Errorf("expected window [l1..l4], got %v", context)
+		}
+		if offset != 0 {
+			t.Errorf("expected offset 0 at the start of the file, got %d", offset)
+		}
+	})
+
+	t.Run("final line clips the window at the end", func(t *testing.T) {
+		context, offset := captureContext(body, 10)
+		if len(context) != 4 || context[0] != "l7" || context[3] != "l10" {
+			t.Errorf("expected window [l7..l10], got %v", context)
+		}
+		if offset != 3 {
+			t.Errorf("expected offset 3 for the final line, got %d", offset)
+		}
+	})
+
+	t.Run("line past the end of the file is empty", func(t *testing.T) {
+		context, offset := captureContext(body, 11)
+		if len(context) != 0 || offset != 0 {
+			t.Errorf("expected empty window for an out-of-file line, got %v offset %d", context, offset)
+		}
+	})
+
+	t.Run("line zero is empty", func(t *testing.T) {
+		context, _ := captureContext(body, 0)
+		if len(context) != 0 {
+			t.Errorf("expected empty window for line 0, got %v", context)
+		}
+	})
+
+	t.Run("single-line file", func(t *testing.T) {
+		context, offset := captureContext("only\n", 1)
+		if len(context) != 1 || context[0] != "only" || offset != 0 {
+			t.Errorf("expected window [only] offset 0, got %v offset %d", context, offset)
+		}
+	})
+}
+
+func TestFileLineRefs(t *testing.T) {
+	refs := fileLineRefs("a\nb\nc\n")
+	if len(refs) != 3 {
+		t.Fatalf("expected 3 refs, got %d", len(refs))
+	}
+	if refs[0].Content != "a" || refs[0].LineNumber != 1 {
+		t.Errorf("expected first ref a:1, got %+v", refs[0])
+	}
+	if refs[2].Content != "c" || refs[2].LineNumber != 3 {
+		t.Errorf("expected last ref c:3, got %+v", refs[2])
+	}
+	if len(fileLineRefs("")) != 0 {
+		t.Error("expected no refs for an empty body")
+	}
+}
+
 func TestFileContentCache(t *testing.T) {
 	calls := 0
 	cache := newFileContentCache(func(rev, path string) (string, error) {

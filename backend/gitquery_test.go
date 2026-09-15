@@ -190,3 +190,43 @@ func TestBlobSHAs(t *testing.T) {
 		t.Error("expected the blob SHA to change after the file's content changed")
 	}
 }
+
+func TestCommitSHA(t *testing.T) {
+	tmpDir := setupTestRepo(t)
+	branch, err := GetCurrentBranch(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to get branch: %v", err)
+	}
+
+	before, err := CommitSHA(tmpDir, branch)
+	if err != nil {
+		t.Fatalf("CommitSHA failed: %v", err)
+	}
+	if len(before) != 40 {
+		t.Errorf("expected a 40-character SHA, got %q", before)
+	}
+
+	// the SHA moves when a commit is made: this is what the poller detects.
+	if err := os.WriteFile(filepath.Join(tmpDir, "test.txt"), []byte("changed\n"), 0644); err != nil {
+		t.Fatalf("failed to modify file: %v", err)
+	}
+	add := exec.Command("git", "add", "test.txt")
+	add.Dir = tmpDir
+	add.Run()
+	commit := exec.Command("git", "commit", "-m", "change")
+	commit.Dir = tmpDir
+	commit.Run()
+
+	after, err := CommitSHA(tmpDir, branch)
+	if err != nil {
+		t.Fatalf("CommitSHA after commit failed: %v", err)
+	}
+	if after == before {
+		t.Error("expected the commit SHA to change after a commit")
+	}
+
+	// `--verify` means an unknown ref errors rather than being echoed back.
+	if sha, err := CommitSHA(tmpDir, "no-such-branch"); err == nil {
+		t.Errorf("expected an error for an unknown ref, got %q", sha)
+	}
+}

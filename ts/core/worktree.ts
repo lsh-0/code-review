@@ -6,18 +6,21 @@
 import type { WorkingTreeStatus } from "./types.ts";
 
 // the message for the page-wide uncommitted-changes banner, or null when the
-// tree is clean and the banner should stay hidden. Counts tracked files
-// modified and deleted (untracked files are not part of `status`), pluralising
-// each label. A status with neither modified nor deleted files yields null.
+// tree is clean and the banner should stay hidden.
+//
+// The message reports only that uncommitted changes exist, without counting
+// them: which files are affected is per-file detail that the file list and the
+// per-file banner already carry, and a bare number is not actionable on its own.
+// Reporting a bare condition also means the banner cannot go stale while it
+// holds, which is what lets the working-tree watcher suspend itself while the
+// banner is up.
 export function workingTreeBannerText(
   status: WorkingTreeStatus,
 ): string | null {
-  const modified = status.modified.length;
-  const deleted = status.deleted.length;
-  if (modified === 0 && deleted === 0) {
+  if (status.modified.length === 0 && status.deleted.length === 0) {
     return null;
   }
-  return `Uncommitted changes detected: ${modified} modified, ${deleted} deleted.`;
+  return "Uncommitted changes detected.";
 }
 
 // whether a given file path has uncommitted working-tree changes, per the

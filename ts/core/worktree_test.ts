@@ -15,16 +15,18 @@ function status(
   return { modified, deleted, dirty_files };
 }
 
-Deno.test("workingTreeBannerText counts modified and deleted files", () => {
-  const given = status(["a.go", "b.go"], ["c.go"]);
-  const actual = workingTreeBannerText(given);
-  assertEquals(actual, "Uncommitted changes detected: 2 modified, 1 deleted.");
-});
-
-Deno.test("workingTreeBannerText reports zero counts when only one kind is present", () => {
+Deno.test("workingTreeBannerText reports a dirty tree", () => {
   const given = status(["a.go"], []);
   const actual = workingTreeBannerText(given);
-  assertEquals(actual, "Uncommitted changes detected: 1 modified, 0 deleted.");
+  assertEquals(actual, "Uncommitted changes detected.");
+});
+
+Deno.test("workingTreeBannerText does not vary with the number of dirty files", () => {
+  // the banner is a binary condition indicator: one dirty file and several must
+  // read identically, which is what stops it going stale while suspended.
+  const one = workingTreeBannerText(status(["a.go"], []));
+  const several = workingTreeBannerText(status(["a.go", "b.go"], ["c.go"]));
+  assertEquals(one, several);
 });
 
 Deno.test("workingTreeBannerText returns null for a clean tree", () => {

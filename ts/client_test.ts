@@ -23,19 +23,19 @@ Deno.test("wire: mutation result decodes with all fields", () => {
   assertEquals(actual.comments.length, 2);
 
   const [rootC, replyC] = actual.comments;
-  // root comment carries a good first anchor (line, context window, offset) and
-  // a status, no parent.
+  // root comment carries backend-derived placement (line, outdated, context)
+  // and a status, no parent. Anchor histories never cross the bridge.
   assertEquals(rootC.parent_id ?? "", "");
   assertEquals(rootC.status, "active");
-  assert(rootC.anchors !== undefined && rootC.anchors.length === 1);
-  const anchor = rootC.anchors[0];
-  assertEquals(anchor.line_number, 7);
-  assertEquals(anchor.offset, 1);
-  assertEquals(anchor.context, ["before", "the line", "after"]);
+  assertEquals(rootC.line, 7);
+  assertEquals(rootC.outdated, false);
+  assert(rootC.context !== undefined && rootC.context.includes("the line"));
   assert(rootC.id.length > 0);
-  // reply carries a parent_id pointing at the root and no anchor of its own.
+  assert(!("anchors" in rootC));
+  // reply carries a parent_id pointing at the root and no placement of its own.
   assertEquals(replyC.parent_id, rootC.id);
-  assertEquals(replyC.anchors ?? [], []);
+  assertEquals(replyC.line, 0);
+  assertEquals(replyC.outdated, false);
 });
 
 Deno.test("wire: review info decodes with all fields", () => {
@@ -68,9 +68,10 @@ Deno.test("wire: commented files decodes with path and comments", () => {
   assertEquals(actual.length, 1);
   assertEquals(actual[0].path, "a.go");
   assertEquals(actual[0].comments.length, 2);
-  const anchors = actual[0].comments[0].anchors;
-  assert(anchors !== undefined && anchors.length === 1);
-  assertEquals(anchors[0].line_number, 7);
+  const commented = actual[0].comments[0];
+  assertEquals(commented.line, 7);
+  assertEquals(commented.outdated, false);
+  assert(commented.context !== undefined && commented.context.length === 3);
 });
 
 // a local comment must carry no origin and an imported one must carry both its
@@ -80,8 +81,5 @@ Deno.test("wire: commented files distinguish local from imported comments", () =
   const [localComment, importedComment] = actual[0].comments;
 
   assertEquals(localComment.origin, undefined);
-
-  assert(importedComment.origin !== undefined, "expected an origin");
-  assertEquals(importedComment.origin.source, "bb:1430");
-  assertEquals(importedComment.origin.foreign_id, "856483458");
+  assertEquals(importedComment.origin, "bb:1430");
 });

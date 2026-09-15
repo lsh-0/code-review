@@ -35,10 +35,63 @@ type App struct {
 	// from a separate goroutine.
 	savedMu        sync.Mutex
 	lastSavedMtime time.Time
+
+	// which watchers are currently suspended, keyed by the names below. A
+	// watcher suspends once it has raised its alert and resumes when the
+	// reviewer clears it, so a change already reported is not reported again.
+	// Set from the frontend (which owns the banners, so it knows when an alert
+	// is up) and read from the watcher goroutines, hence the guard.
+	watchMu        sync.Mutex
+	suspendedWatch map[string]bool
+
+	// the last commit SHA seen on the source branch, guarded alongside the
+	// suspend flags because `ResumeWatch` resets it from the frontend while the
+	// poller reads it.
+	commitSeen commitBaseline
 }
 
+// the watcher names `SuspendWatch`/`ResumeWatch` accept, one per poller.
+const (
+	watchNameState    = "state"
+	watchNameCommits  = "commits"
+	watchNameWorktree = "worktree"
+)
+
 func NewApp() *App {
-	return &App{}
+	return &App{suspendedWatch: map[string]bool{}}
+}
+
+// stop a watcher polling because its alert is now raised. Idempotent: suspending
+// an already-suspended watcher is a no-op.
+func (a *App) SuspendWatch(watcher string) {
+	a.watchMu.Lock()
+	defer a.watchMu.Unlock()
+	if a.suspendedWatch == nil {
+		a.suspendedWatch = map[string]bool{}
+	}
+	a.suspendedWatch[watcher] = true
+}
+
+// resume a watcher because the reviewer has cleared its alert, by refreshing or
+// dismissing it. The commit watcher's baseline is dropped so its next read
+// re-seeds: the reviewer has either absorbed that commit (refresh) or declined
+// it (dismiss), and in both cases re-reporting it would be wrong.
+func (a *App) ResumeWatch(watcher string) {
+	a.watchMu.Lock()
+	defer a.watchMu.Unlock()
+	if a.suspendedWatch != nil {
+		delete(a.suspendedWatch, watcher)
+	}
+	if watcher == watchNameCommits {
+		a.commitSeen.reset()
+	}
+}
+
+// whether a watcher is currently suspended.
+func (a *App) watchSuspended(watcher string) bool {
+	a.watchMu.Lock()
+	defer a.watchMu.Unlock()
+	return a.suspendedWatch[watcher]
 }
 
 // persist the review and record the resulting file modification time, so the
@@ -128,6 +181,10 @@ func (a *App) startup(ctx context.Context) error {
 	// moment a tracked file changes on disk.
 	go a.watchWorkingTree(ctx)
 
+	// watch the source branch's HEAD, so a new commit prompts a refresh rather
+	// than silently leaving the diff describing an older revision.
+	go a.watchSourceBranch(ctx, a.review.SourceBranch)
+
 	return nil
 }
 
@@ -166,12 +223,12 @@ func (a *App) RecomputeDiff() error {
 	return nil
 }
 
-// re-anchor every commented file's comments against the recomputed diff. It
-// fetches each commented file's current blob SHA (the same source `evictChangedMarks`
-// uses) and the new-side line contents from the freshly parsed diff, then hands
-// both to the pure `Review.ReanchorComments`. A blob-SHA lookup failure skips
-// re-anchoring this pass rather than marking comments adrift on a transient git
-// error.
+// re-anchor every commented file's comments against its full content at the
+// head revision. It fetches each commented file's current blob SHA (the same
+// source `evictChangedMarks` uses) and its full file body from the content
+// cache, then hands both to the pure `Review.ReanchorComments`. A blob-SHA
+// lookup failure skips re-anchoring this pass rather than marking comments
+// adrift on a transient git error.
 func (a *App) reanchorComments() {
 	paths := make([]string, 0, len(a.review.Files))
 	for _, file := range a.review.Files {
@@ -188,30 +245,43 @@ func (a *App) reanchorComments() {
 		return
 	}
 
-	a.review.ReanchorComments(blobs, diffLinesByPath(a.diffFiles))
+	a.review.ReanchorComments(blobs, a.reanchorCorpus(paths, blobs))
 }
 
-// the new-side diff lines of each file in `files`, keyed by path, each paired
-// with its new-file line number. These are the lines a comment can re-anchor
-// onto: a position absent from the diff is unreachable, so a comment whose
-// context lands only outside the diff goes adrift.
-func diffLinesByPath(files []DiffFile) map[string][]model.DiffLineRef {
-	out := make(map[string][]model.DiffLineRef, len(files))
-	for _, file := range files {
-		lines := make([]model.DiffLineRef, 0)
-		for _, hunk := range file.Hunks {
-			for _, line := range hunk.Lines {
-				if line.Type != LineRemoved {
-					lines = append(lines, model.DiffLineRef{
-						Content:    line.Content,
-						LineNumber: line.NewLineNo,
-					})
-				}
-			}
+// the re-anchoring corpus for `paths`: every line of each file's full content
+// at the review's source (head) revision, keyed by path. The whole file — not
+// just the lines present in the diff — is the match target, so a comment on
+// unchanged code outside every hunk stays reachable and only content genuinely
+// gone from the file goes adrift. A binary file, or one whose body cannot be
+// read this pass, is also removed from `blobs`, leaving its comments untouched
+// rather than adrift on a transient failure.
+func (a *App) reanchorCorpus(paths []string, blobs map[string]string) map[string][]model.DiffLineRef {
+	corpus := make(map[string][]model.DiffLineRef, len(paths))
+	for _, path := range paths {
+		if a.diffFileIsBinary(path) {
+			delete(blobs, path)
+			continue
 		}
-		out[file.Path] = lines
+		body, err := a.fileCache.get(a.review.SourceBranch, path)
+		if err != nil {
+			delete(blobs, path)
+			continue
+		}
+		corpus[path] = fileLineRefs(body)
 	}
-	return out
+	return corpus
+}
+
+// whether the parsed diff marks `path` binary. A path absent from the diff is
+// not binary: a commented file can drop out of the diff (its branch changes
+// reverted) while its body stays readable and its comments stay anchored.
+func (a *App) diffFileIsBinary(path string) bool {
+	for i := range a.diffFiles {
+		if a.diffFiles[i].Path == path {
+			return a.diffFiles[i].Binary
+		}
+	}
+	return false
 }
 
 // drop the "done" mark from any file whose committed content has changed since
@@ -293,13 +363,20 @@ func (a *App) GetReviewInfo() (string, error) {
 // it is selected.
 func (a *App) GetDiffFiles() (string, error) {
 	type diffFileMeta struct {
-		Path   string `json:"Path"`
-		Binary bool   `json:"Binary"`
+		Path    string `json:"Path"`
+		OldPath string `json:"OldPath"`
+		Binary  bool   `json:"Binary"`
+		Renamed bool   `json:"Renamed"`
 	}
 
 	metas := make([]diffFileMeta, 0, len(a.diffFiles))
 	for _, diffFile := range a.diffFiles {
-		metas = append(metas, diffFileMeta{Path: diffFile.Path, Binary: diffFile.Binary})
+		metas = append(metas, diffFileMeta{
+			Path:    diffFile.Path,
+			OldPath: diffFile.OldPath,
+			Binary:  diffFile.Binary,
+			Renamed: diffFile.Renamed,
+		})
 	}
 
 	data, err := json.Marshal(metas)
@@ -401,7 +478,7 @@ func (a *App) GetComments(filePath string) (string, error) {
 		return "[]", nil
 	}
 
-	data, err := json.Marshal(fileDiff.Comments)
+	data, err := json.Marshal(toGUIComments(fileDiff.Comments))
 	if err != nil {
 		return "", err
 	}
@@ -414,8 +491,8 @@ func (a *App) GetComments(filePath string) (string, error) {
 // with no comments are omitted.
 func (a *App) GetCommentedFiles() (string, error) {
 	type commentedFile struct {
-		Path     string           `json:"path"`
-		Comments []*model.Comment `json:"comments"`
+		Path     string       `json:"path"`
+		Comments []guiComment `json:"comments"`
 	}
 
 	result := make([]commentedFile, 0)
@@ -424,7 +501,7 @@ func (a *App) GetCommentedFiles() (string, error) {
 		if fileDiff == nil || len(fileDiff.Comments) == 0 {
 			continue
 		}
-		result = append(result, commentedFile{Path: diffFile.Path, Comments: fileDiff.Comments})
+		result = append(result, commentedFile{Path: diffFile.Path, Comments: toGUIComments(fileDiff.Comments)})
 	}
 
 	data, err := json.Marshal(result)
@@ -437,11 +514,7 @@ func (a *App) GetCommentedFiles() (string, error) {
 // return the review-level comments (overall feedback, not anchored to any
 // file) as JSON, for the overview to render alongside per-file feedback.
 func (a *App) GetReviewComments() (string, error) {
-	comments := a.review.Comments
-	if comments == nil {
-		comments = []*model.Comment{}
-	}
-	data, err := json.Marshal(comments)
+	data, err := json.Marshal(toGUIComments(a.review.Comments))
 	if err != nil {
 		return "", err
 	}
@@ -498,11 +571,20 @@ func (a *App) ImportForeignReview() (string, error) {
 		return "", err
 	}
 
+	// place against the same corpus the reconciler uses: each file's full body at
+	// the head revision, not only the lines a hunk shows. A comment on a line
+	// outside every hunk is therefore placed rather than left untethered.
+	blobs := a.importBlobs()
+	paths := make([]string, 0, len(blobs))
+	for path := range blobs {
+		paths = append(paths, path)
+	}
+
 	report := importForeignReview(
 		a.review,
 		doc,
-		diffLinesByPath(a.diffFiles),
-		a.importBlobs(),
+		a.reanchorCorpus(paths, blobs),
+		blobs,
 		time.Now().UTC().Format(time.RFC3339),
 	)
 
@@ -553,6 +635,46 @@ func (a *App) SetFileMarked(filePath string, marked bool) error {
 	return a.persist()
 }
 
+// guiComment is the wire shape of a comment for the GUI: the agent CLI's
+// derived view (current `line`, `outdated`, last good `context`) plus the
+// threading fields the GUI renders from. Anchor histories are private to the
+// backend — placement and outdatedness cross the bridge only as these derived
+// fields, so the frontend never re-implements anchor semantics.
+// `Origin` names the external review an imported comment came from, and is absent
+// for a locally written one. The frontend needs it to withhold the edit and delete
+// actions, and to group comments by source for the visibility toggles.
+type guiComment struct {
+	ID       string              `json:"id"`
+	ParentID string              `json:"parent_id,omitempty"`
+	Author   string              `json:"author"`
+	Content  string              `json:"content"`
+	Status   model.CommentStatus `json:"status"`
+	Line     int                 `json:"line"`
+	Outdated bool                `json:"outdated"`
+	Context  []string            `json:"context,omitempty"`
+	Origin   string              `json:"origin,omitempty"`
+}
+
+// flatten model comments to their GUI wire shape, deriving placement from the
+// anchor history. A nil slice marshals as an empty array, never null.
+func toGUIComments(comments []*model.Comment) []guiComment {
+	views := make([]guiComment, 0, len(comments))
+	for _, comment := range comments {
+		views = append(views, guiComment{
+			ID:       comment.ID,
+			ParentID: comment.ParentID,
+			Author:   comment.Author,
+			Content:  comment.Content,
+			Status:   comment.Status,
+			Line:     comment.CurrentLineNumber(),
+			Outdated: comment.IsOutdated(),
+			Context:  comment.LastGoodContext(),
+			Origin:   comment.SourceID(),
+		})
+	}
+	return views
+}
+
 // locate a comment by id. An empty `filePath` means a review-level comment
 // (overall feedback, no file anchor); otherwise the comment is sought in that
 // file's diff. Returns nil if the file or comment is absent.
@@ -567,18 +689,18 @@ func (a *App) findComment(filePath string, commentID string) *model.Comment {
 	return fileDiff.GetComment(commentID)
 }
 
-// the result of a comment mutation: enough for the frontend to patch the one
-// affected thread and the file's status indicator without re-rendering the
-// whole surface. `FilePath` is empty for review-level comments. `LineNumber` is
-// the line the affected thread anchors (the comment's root line); it is -1 for
-// a review-level thread, which has no line. `Comments` is the file's (or the
-// review's) full flat comment array after the mutation, from which the frontend
-// rebuilds the thread. `FileStatus` is the recomputed file pill status.
+// the result of a comment mutation: the affected surface and its full comment
+// state after the change, from which the frontend re-renders that file's
+// region. `FilePath` is empty for review-level comments. `LineNumber` is the
+// line the affected thread anchors (the comment's root line); it is -1 for a
+// review-level thread, which has no line. `Comments` is the file's (or the
+// review's) full flat comment array after the mutation, in the derived GUI
+// shape. `FileStatus` is the recomputed file pill status.
 type CommentMutationResult struct {
-	FilePath   string           `json:"file_path"`
-	LineNumber int              `json:"line_number"`
-	Comments   []*model.Comment `json:"comments"`
-	FileStatus string           `json:"file_status"`
+	FilePath   string       `json:"file_path"`
+	LineNumber int          `json:"line_number"`
+	Comments   []guiComment `json:"comments"`
+	FileStatus string       `json:"file_status"`
 }
 
 // the comments belonging to a surface: a file's `FileDiff.Comments`, or the
@@ -604,7 +726,7 @@ func (a *App) mutationResult(filePath string, line int) CommentMutationResult {
 	return CommentMutationResult{
 		FilePath:   filePath,
 		LineNumber: line,
-		Comments:   comments,
+		Comments:   toGUIComments(comments),
 		FileStatus: model.FileCommentStatus(comments),
 	}
 }
@@ -622,13 +744,15 @@ func (a *App) saveAndResult(filePath string, line int) (string, error) {
 	return string(data), nil
 }
 
-// add a line-anchored comment. `context` is the captured window of new-side
-// line contents around `lineNumber` and `offset` is the anchored line's index
-// within that window, used to re-anchor the comment as the file changes. The
-// file's current blob SHA is captured alongside it so a later
-// reconcile can tell whether the content moved; a SHA lookup failure leaves the
-// anchor's blob empty (treated as a legacy baseline on first reconcile).
-func (a *App) AddComment(filePath string, content string, lineNumber int, context []string, offset int) (string, error) {
+// add a line-anchored comment. The anchor's context window is captured here,
+// from the file's content at the head revision — the same source and radius the
+// reconciler matches against, so creation-time capture and re-anchor capture
+// cannot drift apart, and a line revealed by window growth captures exactly as
+// a line inside a hunk does. An unreadable body stores an empty window (the
+// comment is created adrift rather than rejected); a blob-SHA lookup failure
+// leaves the anchor's blob empty (treated as a legacy baseline on first
+// reconcile).
+func (a *App) AddComment(filePath string, content string, lineNumber int) (string, error) {
 	fileDiff := a.review.GetFileDiff(filePath)
 	if fileDiff == nil {
 		fileDiff = a.review.AddFileDiff(filePath)
@@ -637,6 +761,13 @@ func (a *App) AddComment(filePath string, content string, lineNumber int, contex
 	blob := ""
 	if shas, err := BlobSHAs(a.repoPath, a.review.SourceBranch, []string{filePath}); err == nil {
 		blob = shas[filePath]
+	}
+
+	context, offset := []string{}, 0
+	if a.fileCache != nil {
+		if body, err := a.fileCache.get(a.review.SourceBranch, filePath); err == nil {
+			context, offset = captureContext(body, lineNumber)
+		}
 	}
 
 	fileDiff.AddCommentWithContext(content, lineNumber, a.userName, blob, context, offset)
@@ -649,6 +780,21 @@ func (a *App) AddComment(filePath string, content string, lineNumber int, contex
 func (a *App) AddReviewComment(content string) (string, error) {
 	a.review.AddComment(content, a.userName)
 	return a.saveAndResult("", -1)
+}
+
+// add a top-level file comment: feedback attached to a file but to no line,
+// authored from the top of that file's view. Like a review-level comment it
+// carries no anchor (`AddComment` with line 0 appends none), so it is never
+// outdated and has no line placement. This is the only way to comment on a file
+// with no commentable line — a binary file — and the way to remark on a file as
+// a whole. The file's `FileDiff` is created on demand when it has no comments yet.
+func (a *App) AddFileComment(filePath string, content string) (string, error) {
+	fileDiff := a.review.GetFileDiff(filePath)
+	if fileDiff == nil {
+		fileDiff = a.review.AddFileDiff(filePath)
+	}
+	fileDiff.AddComment(content, 0, a.userName)
+	return a.saveAndResult(filePath, 0)
 }
 
 // change a comment's content.

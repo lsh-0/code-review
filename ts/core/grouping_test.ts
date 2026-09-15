@@ -3,9 +3,9 @@ import { grouperFor, groupFiles } from "./grouping.ts";
 import type { DiffFileMeta } from "./types.ts";
 
 const files: DiffFileMeta[] = [
-  { Path: "a.go", Binary: false },
-  { Path: "b.go", Binary: false },
-  { Path: "c.go", Binary: false },
+  { Path: "a.go", Binary: false, Renamed: false, OldPath: "" },
+  { Path: "b.go", Binary: false, Renamed: false, OldPath: "" },
+  { Path: "c.go", Binary: false, Renamed: false, OldPath: "" },
 ];
 
 const noMarks = { isMarked: () => false };

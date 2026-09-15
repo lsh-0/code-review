@@ -42,10 +42,9 @@ interface BoundApp {
     path: string,
     content: string,
     lineNumber: number,
-    context: string[],
-    offset: number,
   ): Promise<string>;
   AddReviewComment(content: string): Promise<string>;
+  AddFileComment(path: string, content: string): Promise<string>;
   UpdateComment(
     path: string,
     commentID: string,
@@ -59,6 +58,8 @@ interface BoundApp {
   ImportForeignReview(): Promise<string>;
   RecomputeDiff(): Promise<void>;
   ReloadReview(): Promise<void>;
+  SuspendWatch(watcher: string): Promise<void>;
+  ResumeWatch(watcher: string): Promise<void>;
 }
 
 interface WailsGlobal {
@@ -240,22 +241,28 @@ export const browseFile = (path: string): Promise<void> =>
 export const openDiffToolForFile = (path: string): Promise<void> =>
   callVoid("OpenDiffToolForFile", (a) => a.OpenDiffToolForFile(path));
 
+// the backend captures the anchor's context window itself, from the same file
+// content the reconciler matches against, so the caller sends only the target.
 export const addComment = (
   path: string,
   content: string,
   lineNumber: number,
-  context: string[],
-  offset: number,
 ): Promise<CommentMutationResult> =>
   callJSON(
     "AddComment",
-    (a) => a.AddComment(path, content, lineNumber, context, offset),
+    (a) => a.AddComment(path, content, lineNumber),
   );
 
 export const addReviewComment = (
   content: string,
 ): Promise<CommentMutationResult> =>
   callJSON("AddReviewComment", (a) => a.AddReviewComment(content));
+
+export const addFileComment = (
+  path: string,
+  content: string,
+): Promise<CommentMutationResult> =>
+  callJSON("AddFileComment", (a) => a.AddFileComment(path, content));
 
 export const updateComment = (
   path: string,
@@ -305,3 +312,12 @@ export const recomputeDiff = (): Promise<void> =>
 
 export const reloadReview = (): Promise<void> =>
   callVoid("ReloadReview", (a) => a.ReloadReview());
+
+// stop a watcher polling because its alert is now on screen, and resume it once
+// the reviewer has cleared that alert. The frontend drives both because it owns
+// the banners, so it is what knows when an alert is up.
+export const suspendWatch = (watcher: string): Promise<void> =>
+  callVoid("SuspendWatch", (a) => a.SuspendWatch(watcher));
+
+export const resumeWatch = (watcher: string): Promise<void> =>
+  callVoid("ResumeWatch", (a) => a.ResumeWatch(watcher));

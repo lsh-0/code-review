@@ -10,7 +10,9 @@ import { state } from "./state.ts";
 // the structural shell from `index.html` that the render layer targets by id.
 const SHELL = `
 <div id="app">
-  <div id="review-changed-banner" class="banner hidden"></div>
+  <div id="review-changed-banner" class="banner hidden">
+    <span id="review-changed-banner-text"></span>
+  </div>
   <div id="file-list">
     <div id="files"></div>
     <div id="overview-footer"></div>
@@ -42,12 +44,14 @@ export function setupDom(): HTMLDocument {
   state.currentUser = "";
   state.overviewActive = false;
   state.diffFiles = [];
+  state.fileViews = new Map();
   state.commentsCache = new Map();
   state.markedFiles = new Set();
   state.fileFilter = "";
   state.fileGrouping = "none";
   state.sources = [];
   state.hiddenSources = new Set();
+  state.workingTreeStatus = null;
 
   return doc;
 }

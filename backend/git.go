@@ -40,7 +40,10 @@ func GetDefaultBranch(repoPath string) (string, error) {
 }
 
 func GetDiff(repoPath, baseBranch, headBranch string) (string, error) {
-	cmd := exec.Command("git", "-C", repoPath, "diff", baseBranch+"..."+headBranch)
+	// -M forces rename detection regardless of the user's `diff.renames` config,
+	// so a pure rename is reported as a rename (with `rename from`/`rename to`)
+	// rather than an unrelated delete-plus-add pair.
+	cmd := exec.Command("git", "-C", repoPath, "diff", "-M", baseBranch+"..."+headBranch)
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {

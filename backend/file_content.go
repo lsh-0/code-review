@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	"code-review/model"
 )
 
 // a per-session cache of full file bodies keyed by `rev` then `path`, so
@@ -92,4 +94,30 @@ func fileLineRange(body string, startNew, endNew, oldOffset int) ([]DiffLine, er
 		return nil, fmt.Errorf("invalid range: start %d after end %d", startNew, endNew)
 	}
 	return contextLines(body, startNew, endNew, oldOffset), nil
+}
+
+// capture the re-anchoring context window around 1-based line `lineNumber` of a
+// file body: the window's line contents spanning `model.CaptureRadius` lines
+// each side, clipped at the file's bounds, and the anchored line's offset
+// within the window. A line outside the file yields an empty window and offset
+// 0 — the adrift shape, since there is no content to witness.
+func captureContext(body string, lineNumber int) ([]string, int) {
+	all := splitLines(body)
+	if lineNumber < 1 || lineNumber > len(all) {
+		return []string{}, 0
+	}
+	lo := max(lineNumber-model.CaptureRadius, 1)
+	hi := min(lineNumber+model.CaptureRadius, len(all))
+	return all[lo-1 : hi], lineNumber - lo
+}
+
+// one `model.DiffLineRef` per line of a file body, numbered from 1: the
+// full-file re-anchoring corpus for one file.
+func fileLineRefs(body string) []model.DiffLineRef {
+	all := splitLines(body)
+	refs := make([]model.DiffLineRef, len(all))
+	for i, content := range all {
+		refs[i] = model.DiffLineRef{Content: content, LineNumber: i + 1}
+	}
+	return refs
 }
