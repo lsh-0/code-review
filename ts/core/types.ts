@@ -18,6 +18,33 @@ export interface Anchor {
   context?: string[];
 }
 
+// where an imported comment came from, mirroring the Go `Origin`. `source` keys
+// into the review's sources; `foreign_id` is the comment's id in the document it
+// was imported from. Absent on a locally written comment.
+export interface Origin {
+  source: string;
+  foreign_id: string;
+}
+
+// an external review imported into this one, mirroring the Go `Source`. `id` is
+// what an imported comment's `origin.source` names, and `label` is what the
+// visibility toggle displays.
+export interface Source {
+  id: string;
+  label: string;
+  pull_request: number;
+  title?: string;
+  source_branch: string;
+  target_branch: string;
+  imported_at: string;
+}
+
+// the source id standing for the review's own locally written feedback. It is not
+// a real entry in the review's sources: it is the key local comments group under
+// so the visibility toggles treat local feedback as one source among the imports
+// rather than as a special case.
+export const localSourceID = "local";
+
 // a review note against a line of the diff. A reply is a `Comment` whose
 // `parent_id` is the id of the comment it answers; a root comment has an empty
 // `parent_id`. Replies form a flat thread under their root and carry no
@@ -28,6 +55,9 @@ export interface Anchor {
 // whether the comment is outdated are derived from the most-recent anchor (see
 // `currentLineNumber`/`isOutdated` in `core/comments`), never stored. Replies
 // and review-level comments carry no anchors.
+//
+// An absent `origin` marks a locally written comment. An imported comment's
+// content is read-only: the render layer offers it no edit or delete action.
 export interface Comment {
   id: string;
   parent_id?: string;
@@ -35,6 +65,7 @@ export interface Comment {
   content: string;
   status: CommentStatus;
   anchors?: Anchor[];
+  origin?: Origin;
 }
 
 // the line classification, matching the Go `LineType` iota: 0 context, 1 added,

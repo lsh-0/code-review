@@ -49,12 +49,39 @@ Deno.test("wire: review info decodes with all fields", () => {
   assertEquals(actual.current_user, "Test User");
 });
 
+Deno.test("wire: review info carries the imported sources", () => {
+  const actual = readFixture("review_info.json") as ReviewInfo;
+
+  assertEquals(actual.sources.length, 1);
+  const source = actual.sources[0];
+  assertEquals(source.id, "bb:1430");
+  assertEquals(source.label, "Bitbucket #1430 — a title");
+  assertEquals(source.pull_request, 1430);
+  assertEquals(source.title, "a title");
+  assertEquals(source.source_branch, "feature-1430--telemetry");
+  assertEquals(source.target_branch, "master");
+  assertEquals(source.imported_at, "2026-09-14T12:00:00Z");
+});
+
 Deno.test("wire: commented files decodes with path and comments", () => {
   const actual = readFixture("commented_files.json") as CommentedFile[];
   assertEquals(actual.length, 1);
   assertEquals(actual[0].path, "a.go");
-  assertEquals(actual[0].comments.length, 1);
+  assertEquals(actual[0].comments.length, 2);
   const anchors = actual[0].comments[0].anchors;
   assert(anchors !== undefined && anchors.length === 1);
   assertEquals(anchors[0].line_number, 7);
+});
+
+// a local comment must carry no origin and an imported one must carry both its
+// source and its foreign id, so the render layer can tell them apart.
+Deno.test("wire: commented files distinguish local from imported comments", () => {
+  const actual = readFixture("commented_files.json") as CommentedFile[];
+  const [localComment, importedComment] = actual[0].comments;
+
+  assertEquals(localComment.origin, undefined);
+
+  assert(importedComment.origin !== undefined, "expected an origin");
+  assertEquals(importedComment.origin.source, "bb:1430");
+  assertEquals(importedComment.origin.foreign_id, "856483458");
 });

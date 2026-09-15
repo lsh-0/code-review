@@ -4,12 +4,13 @@
 // (overviewOnly); this module lays out the sections.
 
 import type { Comment, CommentedFile } from "../core/types.ts";
-import { rootComments } from "../core/comments.ts";
+import { rootComments, visibleComments } from "../core/comments.ts";
 import { byId, clear, el } from "../dom.ts";
 import { browseFile } from "../client.ts";
 import { type CommentActions, createCommentThread } from "./comments.ts";
 import { type DiffCallbacks, renderFileHunks } from "./hunks.ts";
 import { ensureFileDiffs } from "./load.ts";
+import { state } from "./state.ts";
 
 export interface OverviewCallbacks {
   diff: DiffCallbacks;
@@ -30,6 +31,13 @@ export async function renderOverview(
   renderOverviewContent(reviewComments, files, cb);
 }
 
+// render the overview's sections from the loaded data.
+//
+// The review comments and the file list arrive as arguments straight from the
+// bridge, so they are filtered by source visibility here. This is the one render
+// path that does not read its comments through `commentsFor`, which filters for
+// every other surface. A file whose comments all belong to hidden sources is not
+// listed at all, rather than listed with an empty body.
 function renderOverviewContent(
   reviewComments: Comment[],
   files: CommentedFile[],
@@ -41,15 +49,31 @@ function renderOverviewContent(
   }
   clear(content);
 
-  content.appendChild(overviewReviewSection(reviewComments, cb));
+  content.appendChild(
+    overviewReviewSection(
+      visibleComments(reviewComments, state.hiddenSources),
+      cb,
+    ),
+  );
 
-  for (const file of files) {
+  for (const file of visibleCommentedFiles(files)) {
     const section = el("div", { classes: ["overview-file"] });
     section.appendChild(overviewFileHeader(file.path, cb));
     // only this file's commented hunks, read-only, threads embedded.
     renderFileHunks(section, file.path, cb.diff, true);
     content.appendChild(section);
   }
+}
+
+// the commented files that still have a visible comment. A file whose feedback all
+// belongs to hidden sources has nothing to show, so it drops out of the overview.
+function visibleCommentedFiles(files: CommentedFile[]): CommentedFile[] {
+  if (state.hiddenSources.size === 0) {
+    return files;
+  }
+  return files.filter(
+    (f) => visibleComments(f.comments, state.hiddenSources).length > 0,
+  );
 }
 
 // the review-level feedback section: a heading, an "add comment" control, and

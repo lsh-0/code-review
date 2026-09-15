@@ -12,6 +12,7 @@ import type {
   DiffFile,
   DiffFileMeta,
   FileLinesResult,
+  Source,
   WorkingTreeStatus,
 } from "./core/types.ts";
 
@@ -55,6 +56,7 @@ interface BoundApp {
   IgnoreComment(path: string, commentID: string): Promise<string>;
   ReactivateComment(path: string, commentID: string): Promise<string>;
   DeleteComment(path: string, commentID: string): Promise<string>;
+  ImportForeignReview(): Promise<string>;
   RecomputeDiff(): Promise<void>;
   ReloadReview(): Promise<void>;
 }
@@ -102,11 +104,22 @@ export class BridgeNotReadyError extends Error {
 }
 
 // the review info returned by `GetReviewInfo` (decoded from its JSON string).
+// `sources` is the external reviews imported into this one, empty when none.
 export interface ReviewInfo {
   repo_path: string;
   source_branch: string;
   target_branch: string;
   current_user: string;
+  sources: Source[];
+}
+
+// the outcome of a GUI import, returned by `ImportForeignReview`. `cancelled` is
+// true when the reviewer dismissed the file dialog, in which case nothing changed
+// and there is nothing to report.
+export interface ImportResult {
+  cancelled: boolean;
+  source: string;
+  lines: string[];
 }
 
 // reviewInfo / statePrompt etc. each call one bound method and decode its
@@ -281,6 +294,11 @@ export const deleteComment = (
   commentID: string,
 ): Promise<CommentMutationResult> =>
   callJSON("DeleteComment", (a) => a.DeleteComment(path, commentID));
+
+// prompt for an external review document and merge it into the review. The dialog
+// and the import both run in the backend; this only carries back the report.
+export const importForeignReview = (): Promise<ImportResult> =>
+  callJSON("ImportForeignReview", (a) => a.ImportForeignReview());
 
 export const recomputeDiff = (): Promise<void> =>
   callVoid("RecomputeDiff", (a) => a.RecomputeDiff());

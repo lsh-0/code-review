@@ -171,7 +171,8 @@ header {
 }
 
 #refresh-btn,
-#copy-prompt-btn {
+#copy-prompt-btn,
+#import-btn {
     margin-top: 0.5rem;
     padding: 0.3rem 0.8rem;
     background: var(--color-bg-secondary);
@@ -185,14 +186,16 @@ header {
 }
 
 #refresh-btn:hover,
-#copy-prompt-btn:hover {
+#copy-prompt-btn:hover,
+#import-btn:hover {
     background: var(--color-bg-primary);
 }
 
 /* press affordance: the button depresses slightly on click and springs back,
    the basic indent-then-outdent every button should have. */
 #refresh-btn:active,
-#copy-prompt-btn:active {
+#copy-prompt-btn:active,
+#import-btn:active {
     transform: translateY(1px);
 }
 
@@ -200,7 +203,8 @@ header {
    `transition` fade it back when the class is removed. Only colour changes — no
    size or text change, so the surrounding navigation never shifts. */
 #refresh-btn.flash-success,
-#copy-prompt-btn.flash-success {
+#copy-prompt-btn.flash-success,
+#import-btn.flash-success {
     background: var(--color-status-active);
     color: white;
     transition: none;
@@ -355,6 +359,35 @@ header {
 
 #file-group-control label {
     flex: 0 0 auto;
+}
+
+/* the per-source visibility toggles, one row per feedback source with local
+   feedback first. Hidden entirely when nothing has been imported. */
+#source-toggles {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem 1rem;
+    background: var(--color-nav-bg);
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+}
+
+.source-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.source-toggle span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 #file-group-control select {
@@ -1008,6 +1041,23 @@ button.overview-file-name:hover {
     font-size: 0.75rem;
     color: var(--color-status-ignored);
     font-weight: normal;
+}
+
+/* an imported comment: read-only text, marked by a left edge and by naming its
+   source in the header. */
+.comment-foreign {
+    border-left: 3px solid var(--color-status-ignored);
+    padding-left: 0.5rem;
+}
+
+.comment-origin {
+    font-size: 0.7rem;
+    color: var(--color-text-secondary);
+    font-style: italic;
+    margin-left: 0.4rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .comment-content {

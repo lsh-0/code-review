@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Banners now warn when the working tree has uncommitted changes the diff cannot show, updating live as files change
   - A page-wide banner counts modified and deleted tracked files; new untracked files are ignored
   - Viewing a changed file shows a per-file warning linking to your configured diff tool via `git difftool`
+- Review feedback raised on a Bitbucket or GitHub pull request can now be imported and worked through locally
+  - "Import feedback" in the GUI, or `code-review import <file>`, reads a feedback document and merges it into the review
+  - Imported comments appear against their lines like your own, and their reply threads are kept
+  - The text of an imported comment cannot be edited or deleted, but you can reply to it and resolve it as usual
+  - Your replies and resolutions are local and survive re-importing the same pull request
+  - A toggle per feedback source hides or shows it, with your own local feedback listed as the first source
+  - The import reads a file only: no network request is made and no credentials are needed
+  - Comments whose line no longer exists in the diff are shown untethered, and the import reports what it could not place
 
 ### Changed
 

@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -851,6 +852,194 @@ func TestCommentUnmarshalJSONReplyGetsNoAnchor(t *testing.T) {
 
 	if len(actual.Anchors) != 0 {
 		t.Errorf("expected a reply to load with no anchors, got %d", len(actual.Anchors))
+	}
+}
+
+func TestCommentWithoutOriginIsLocal(t *testing.T) {
+	given := NewComment("local note", 10, "Test User")
+
+	if given.IsForeign() {
+		t.Error("expected a comment created locally to report as local")
+	}
+	if given.SourceID() != "" {
+		t.Errorf("expected an empty source id, got %q", given.SourceID())
+	}
+}
+
+func TestCommentWithOriginIsForeign(t *testing.T) {
+	given := NewComment("imported note", 10, "review-bot")
+	given.Origin = &Origin{Source: "bb:1430", ForeignID: "856483458"}
+
+	if !given.IsForeign() {
+		t.Error("expected a comment carrying an origin to report as foreign")
+	}
+
+	expected := "bb:1430"
+	actual := given.SourceID()
+	if actual != expected {
+		t.Errorf("source id: got %q, want %q", actual, expected)
+	}
+}
+
+// a state file written before origins and sources existed must load with every
+// comment local, so an existing review needs no migration step.
+func TestLegacyStateLoadsWithEveryCommentLocal(t *testing.T) {
+	given := `{
+		"id": "rev1",
+		"repo_path": "/repo",
+		"source_branch": "feature",
+		"target_branch": "master",
+		"files": [
+			{
+				"file_path": "main.go",
+				"comments": [
+					{"id": "c1", "author": "Test User", "content": "a note", "status": "active",
+					 "anchors": [{"blob": "abc", "line_number": 4, "offset": 1, "context": ["x", "y", "z"]}]}
+				]
+			}
+		],
+		"marked_files": []
+	}`
+
+	var actual Review
+	if err := json.Unmarshal([]byte(given), &actual); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if len(actual.Sources) != 0 {
+		t.Errorf("expected no sources, got %d", len(actual.Sources))
+	}
+
+	comment := actual.Files[0].Comments[0]
+	if comment.IsForeign() {
+		t.Error("expected a comment from a legacy state file to be local")
+	}
+	if comment.Origin != nil {
+		t.Error("expected a legacy comment to carry no origin")
+	}
+}
+
+// a review that has never imported anything must not gain an `origin` or
+// `sources` field on disk, so its state file is unchanged by this feature.
+func TestReviewWithoutImportsOmitsOriginAndSources(t *testing.T) {
+	given := NewReview("/repo", "feature", "master")
+	given.AddFileDiff("main.go").AddComment("a note", 4, "Test User")
+	given.AddComment("overall", "Test User")
+
+	data, err := json.Marshal(given)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+
+	actual := string(data)
+	if strings.Contains(actual, "origin") {
+		t.Errorf("expected no origin field in a review with no imports: %s", actual)
+	}
+	if strings.Contains(actual, "sources") {
+		t.Errorf("expected no sources field in a review with no imports: %s", actual)
+	}
+}
+
+func TestCommentOriginRoundTrips(t *testing.T) {
+	given := NewComment("imported note", 10, "review-bot")
+	given.Origin = &Origin{Source: "bb:1430", ForeignID: "856483458"}
+
+	data, err := json.Marshal(given)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+
+	var actual Comment
+	if err := json.Unmarshal(data, &actual); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if actual.Origin == nil {
+		t.Fatal("expected the origin to survive a round trip")
+	}
+	if actual.Origin.Source != "bb:1430" {
+		t.Errorf("source: got %q, want %q", actual.Origin.Source, "bb:1430")
+	}
+	if actual.Origin.ForeignID != "856483458" {
+		t.Errorf("foreign id: got %q, want %q", actual.Origin.ForeignID, "856483458")
+	}
+}
+
+// the legacy-anchor upgrade path shares one `wire` struct with the current form,
+// so a legacy comment that also carries an origin must keep it.
+func TestLegacyCommentUpgradePreservesOrigin(t *testing.T) {
+	given := `{
+		"id": "c1",
+		"author": "review-bot",
+		"content": "imported note",
+		"status": "active",
+		"line_number": 42,
+		"context_before": "before",
+		"context_line": "line",
+		"context_after": "after",
+		"origin": {"source": "bb:1430", "foreign_id": "856483458"}
+	}`
+
+	var actual Comment
+	if err := json.Unmarshal([]byte(given), &actual); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if actual.Origin == nil {
+		t.Fatal("expected the origin to survive the legacy anchor upgrade")
+	}
+	if actual.Origin.Source != "bb:1430" {
+		t.Errorf("source: got %q, want %q", actual.Origin.Source, "bb:1430")
+	}
+	if len(actual.Anchors) != 1 {
+		t.Fatalf("expected the legacy anchor to be upgraded, got %d anchors", len(actual.Anchors))
+	}
+}
+
+func TestUpsertSourceAddsThenReplaces(t *testing.T) {
+	given := NewReview("/repo", "feature", "master")
+
+	given.UpsertSource(Source{ID: "bb:1430", Label: "first", PullRequest: 1430, ImportedAt: "t1"})
+	given.UpsertSource(Source{ID: "bb:1430", Label: "second", PullRequest: 1430, ImportedAt: "t2"})
+
+	expected := 1
+	actual := len(given.Sources)
+	if actual != expected {
+		t.Fatalf("source count: got %d, want %d", actual, expected)
+	}
+	if given.Sources[0].Label != "second" {
+		t.Errorf("expected the later import to replace the entry, got label %q", given.Sources[0].Label)
+	}
+	if given.Sources[0].ImportedAt != "t2" {
+		t.Errorf("imported at: got %q, want %q", given.Sources[0].ImportedAt, "t2")
+	}
+}
+
+func TestUpsertSourceKeepsOtherSources(t *testing.T) {
+	given := NewReview("/repo", "feature", "master")
+
+	given.UpsertSource(Source{ID: "bb:1430", Label: "first"})
+	given.UpsertSource(Source{ID: "gh:88", Label: "second"})
+
+	expected := 2
+	actual := len(given.Sources)
+	if actual != expected {
+		t.Fatalf("source count: got %d, want %d", actual, expected)
+	}
+	if given.GetSource("bb:1430") == nil {
+		t.Error("expected the first source to survive adding a second")
+	}
+	if given.GetSource("gh:88") == nil {
+		t.Error("expected the second source to be present")
+	}
+}
+
+func TestGetSourceUnknownIsNil(t *testing.T) {
+	given := NewReview("/repo", "feature", "master")
+	given.UpsertSource(Source{ID: "bb:1430"})
+
+	if given.GetSource("bb:9999") != nil {
+		t.Error("expected an unknown source id to report nil")
 	}
 }
 

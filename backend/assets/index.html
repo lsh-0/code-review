@@ -16,6 +16,10 @@
         <div id="working-tree-banner" class="banner banner-info hidden">
             <span id="working-tree-banner-text"></span>
         </div>
+        <div id="import-banner" class="banner banner-info hidden">
+            <span id="import-banner-text"></span>
+            <button id="import-banner-dismiss" class="banner-dismiss" title="Dismiss">×</button>
+        </div>
         <div id="main-content">
             <div id="file-list">
                 <header>
@@ -26,12 +30,14 @@
                         </div>
                         <button id="refresh-btn">Refresh</button>
                         <button id="copy-prompt-btn" title="Copy an AI prompt that points at this review's state file">Copy AI prompt</button>
+                        <button id="import-btn" title="Import review feedback from a Bitbucket or GitHub pull request dump">Import feedback</button>
                     </div>
                 </header>
                 <div id="file-group-control">
                     <label for="file-grouping">Group by:</label>
                     <select id="file-grouping"></select>
                 </div>
+                <div id="source-toggles" aria-label="Feedback sources"></div>
                 <input id="file-filter" type="text" autocomplete="off"
                        spellcheck="false" placeholder="Filter files…"
                        aria-label="Filter the file list">

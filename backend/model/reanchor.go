@@ -121,6 +121,29 @@ func findAnchorByBlob(anchors []Anchor, blob string) *Anchor {
 // created one. The two constants are independent; keep them in lockstep.
 const captureRadius = 3
 
+// build the first anchor for a comment placed directly at `lineNumber` against
+// `blob`, capturing a fresh context window from `lines` at that position.
+//
+// Returns a good anchor when `lineNumber` is present in `lines`, and an adrift
+// anchor carrying only `blob` when it is not — the caller's comment then renders
+// untethered rather than being placed on code that is not there. The window is the
+// same size a reviewer-created anchor captures, so a comment anchored here is
+// indistinguishable to the reconciler from one created locally at that line.
+//
+// This is the entry point an import uses. It lives here, with `captureRadius`,
+// rather than being reimplemented by the caller: the window size must not be
+// copied out of this file.
+func AnchorAtLine(blob string, lineNumber int, lines []DiffLineRef) Anchor {
+	for i := range lines {
+		if lines[i].LineNumber != lineNumber {
+			continue
+		}
+		context, offset := captureWindow(lines, i)
+		return Anchor{Blob: blob, LineNumber: lineNumber, Offset: offset, Context: context}
+	}
+	return Anchor{Blob: blob}
+}
+
 // locate the anchored line within `lines` and return its index there. `context`
 // is the search key (the last good window) and `offset` is the anchored line's
 // index within it. Tries an exact window match first, then a fuzzy match

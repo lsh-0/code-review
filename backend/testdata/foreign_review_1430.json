@@ -1,0 +1,338 @@
+{
+  "pull_request": {
+    "id": 1430,
+    "title": "Telemetry flag wiring",
+    "description": "### Description\n\nWire the telemetry flag through the request path and add an ordering probe.\n\n### Tests\n\n* [x] Integration tests\n",
+    "state": "open",
+    "draft": true,
+    "author": {
+      "display_name": "Luke",
+      "account_id": "000000:00000000-0000-4000-8000-000000000001",
+      "uuid": "{00000000-0000-4000-8000-0000000000a1}",
+      "nickname": "Luke",
+      "kind": "human"
+    },
+    "created_at": "2026-09-04T03:54:57.776968Z",
+    "updated_at": "2026-09-14T01:24:36.064834Z",
+    "source": {
+      "branch": "feature-1430--telemetry",
+      "commit": "8ebf8c861e7f"
+    },
+    "destination": {
+      "branch": "master",
+      "commit": "8695f875251b"
+    },
+    "participants": [
+      {
+        "user": {
+          "display_name": "Reviewer One",
+          "account_id": "000000:00000000-0000-4000-8000-000000000002",
+          "uuid": "{00000000-0000-4000-8000-0000000000a2}",
+          "nickname": "Reviewer One",
+          "kind": "human"
+        },
+        "role": "reviewer",
+        "approved": false
+      },
+      {
+        "user": {
+          "display_name": "review-bot",
+          "account_id": "000000:00000000-0000-4000-8000-000000000003",
+          "uuid": "{00000000-0000-4000-8000-0000000000a3}",
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "workspace_access_token"
+        },
+        "role": "participant",
+        "approved": false
+      },
+      {
+        "user": {
+          "display_name": "Reviewer Two",
+          "account_id": "000000:00000000-0000-4000-8000-000000000004",
+          "uuid": "{00000000-0000-4000-8000-0000000000a4}",
+          "nickname": "Reviewer Two",
+          "kind": "human"
+        },
+        "role": "reviewer",
+        "approved": false
+      },
+      {
+        "user": {
+          "display_name": "Reviewer Three",
+          "account_id": "000000000000000000000005",
+          "uuid": "{00000000-0000-4000-8000-0000000000a5}",
+          "nickname": "Reviewer Three",
+          "kind": "human"
+        },
+        "role": "reviewer",
+        "approved": false
+      },
+      {
+        "user": {
+          "display_name": "Reviewer Four",
+          "account_id": "000000000000000000000006",
+          "uuid": "{00000000-0000-4000-8000-0000000000a6}",
+          "nickname": "reviewer.four",
+          "kind": "human"
+        },
+        "role": "reviewer",
+        "approved": false
+      },
+      {
+        "user": {
+          "display_name": "Reviewer Five",
+          "account_id": "000000000000000000000007",
+          "uuid": "{00000000-0000-4000-8000-0000000000a7}",
+          "nickname": "reviewer.five",
+          "kind": "human"
+        },
+        "role": "reviewer",
+        "approved": false
+      }
+    ],
+    "reported_comment_count": 7,
+    "reported_task_count": 0
+  },
+  "discussion": [
+    {
+      "location": {
+        "kind": "pull_request"
+      },
+      "resolution": {
+        "state": "unresolved"
+      },
+      "root": {
+        "id": 856483516,
+        "author": {
+          "display_name": "review-bot",
+          "account_id": "000000:00000000-0000-4000-8000-000000000003",
+          "uuid": "{00000000-0000-4000-8000-0000000000a3}",
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "workspace_access_token"
+        },
+        "body": {
+          "kind": "markdown",
+          "text": "## Code Review\n\n**6 findings: 0 critical, 2 high, 2 medium, 2 low.**\n\nSee the inline comments."
+        },
+        "created_at": "2026-09-04T03:59:34.961609Z",
+        "updated_at": "2026-09-04T03:59:34.966345Z",
+        "pending": false,
+        "replies": []
+      }
+    }
+  ],
+  "file_feedback": [
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": ".claude/commands/opsx/apply.md",
+        "position": {
+          "kind": "updated",
+          "lines": {
+            "first": 1,
+            "last": 1
+          }
+        }
+      },
+      "resolution": {
+        "state": "unresolved"
+      },
+      "root": {
+        "id": 856483458,
+        "author": {
+          "display_name": "review-bot",
+          "account_id": "000000:00000000-0000-4000-8000-000000000003",
+          "uuid": "{00000000-0000-4000-8000-0000000000a3}",
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "workspace_access_token"
+        },
+        "body": {
+          "kind": "markdown",
+          "text": "**HIGH: Unrelated files in the change.** Tooling files under `.claude/` are included. Move them to a separate change."
+        },
+        "created_at": "2026-09-04T03:59:18.958990Z",
+        "updated_at": "2026-09-04T03:59:18.967233Z",
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": "config/server.conf",
+        "position": {
+          "kind": "updated",
+          "lines": {
+            "first": 69,
+            "last": 69
+          }
+        }
+      },
+      "resolution": {
+        "state": "unresolved"
+      },
+      "root": {
+        "id": 856483461,
+        "author": {
+          "display_name": "review-bot",
+          "account_id": "000000:00000000-0000-4000-8000-000000000003",
+          "uuid": "{00000000-0000-4000-8000-0000000000a3}",
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "workspace_access_token"
+        },
+        "body": {
+          "kind": "markdown",
+          "text": "**HIGH: Validation not run before merge.** The container check documented in the description has not been run."
+        },
+        "created_at": "2026-09-04T03:59:19.746171Z",
+        "updated_at": "2026-09-04T03:59:19.751092Z",
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": "test/integration/www.example.com/flagEvaluation.test.ts",
+        "position": {
+          "kind": "updated",
+          "lines": {
+            "first": 71,
+            "last": 71
+          }
+        }
+      },
+      "resolution": {
+        "state": "unresolved"
+      },
+      "root": {
+        "id": 856483464,
+        "author": {
+          "display_name": "review-bot",
+          "account_id": "000000:00000000-0000-4000-8000-000000000003",
+          "uuid": "{00000000-0000-4000-8000-0000000000a3}",
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "workspace_access_token"
+        },
+        "body": {
+          "kind": "markdown",
+          "text": "**MEDIUM: Possible race between two requests.** The test issues two requests and assumes their order."
+        },
+        "created_at": "2026-09-04T03:59:20.477907Z",
+        "updated_at": "2026-09-04T03:59:20.484281Z",
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": "test/integration/utilities/pathCaseTests.ts",
+        "position": {
+          "kind": "updated",
+          "lines": {
+            "first": 22,
+            "last": 22
+          }
+        }
+      },
+      "resolution": {
+        "state": "unresolved"
+      },
+      "root": {
+        "id": 856483470,
+        "author": {
+          "display_name": "review-bot",
+          "account_id": "000000:00000000-0000-4000-8000-000000000003",
+          "uuid": "{00000000-0000-4000-8000-0000000000a3}",
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "workspace_access_token"
+        },
+        "body": {
+          "kind": "markdown",
+          "text": "**MEDIUM: Fragile assertion.** The assertion assumes `data.path` is lowercased by the server."
+        },
+        "created_at": "2026-09-04T03:59:21.214580Z",
+        "updated_at": "2026-09-04T03:59:21.220300Z",
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": "config/conf.d/www.example.com.conf",
+        "position": {
+          "kind": "updated",
+          "lines": {
+            "first": 419,
+            "last": 419
+          }
+        }
+      },
+      "resolution": {
+        "state": "unresolved"
+      },
+      "root": {
+        "id": 856483473,
+        "author": {
+          "display_name": "review-bot",
+          "account_id": "000000:00000000-0000-4000-8000-000000000003",
+          "uuid": "{00000000-0000-4000-8000-0000000000a3}",
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "workspace_access_token"
+        },
+        "body": {
+          "kind": "markdown",
+          "text": "**LOW: Tag omits the trailing slash.** The resource tag differs from the route by a trailing slash."
+        },
+        "created_at": "2026-09-04T03:59:21.963194Z",
+        "updated_at": "2026-09-04T03:59:21.968282Z",
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": "config/conf.d/www.example.com.conf",
+        "position": {
+          "kind": "updated",
+          "lines": {
+            "first": 482,
+            "last": 482
+          }
+        }
+      },
+      "resolution": {
+        "state": "unresolved"
+      },
+      "root": {
+        "id": 856483475,
+        "author": {
+          "display_name": "review-bot",
+          "account_id": "000000:00000000-0000-4000-8000-000000000003",
+          "uuid": "{00000000-0000-4000-8000-0000000000a3}",
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "workspace_access_token"
+        },
+        "body": {
+          "kind": "markdown",
+          "text": "**LOW: Tag omits the trailing slash.** The same mismatch appears on a second route."
+        },
+        "created_at": "2026-09-04T03:59:22.699187Z",
+        "updated_at": "2026-09-04T03:59:22.704545Z",
+        "pending": false,
+        "replies": []
+      }
+    }
+  ]
+}

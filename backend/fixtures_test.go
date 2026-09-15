@@ -64,6 +64,18 @@ func wireFixtures() (map[string]string, error) {
 		return nil, fmt.Errorf("AddReply: %w", err)
 	}
 
+	// an imported source, so the review-info fixture pins the `sources` shape the
+	// frontend builds its visibility toggles from.
+	app.review.UpsertSource(model.Source{
+		ID:           "bb:1430",
+		Label:        "Bitbucket #1430 — a title",
+		PullRequest:  1430,
+		Title:        "a title",
+		SourceBranch: "feature-1430--telemetry",
+		TargetBranch: "master",
+		ImportedAt:   "2026-09-14T12:00:00Z",
+	})
+
 	// review info, marshalled the same way `GetReviewInfo` does.
 	infoRaw, err := app.GetReviewInfo()
 	if err != nil {
@@ -74,6 +86,14 @@ func wireFixtures() (map[string]string, error) {
 	// derives its list from the parsed git diff, which is empty without a repo,
 	// so the shape is marshalled here from the same struct it uses — grounding
 	// the fixture in the real type rather than faking the JSON.
+	//
+	// The imported comment pins the `origin` field's shape. A heterogeneous array
+	// is unioned by `shapeOf`, so both a local and an imported comment are
+	// reported.
+	importedComment := model.NewCommentWithContext(
+		"an imported finding", 9, "review-bot (bot)", "blob-a", []string{"before", "the line", "after"}, 1)
+	importedComment.Origin = &model.Origin{Source: "bb:1430", ForeignID: "856483458"}
+
 	commentedFiles := []struct {
 		Path     string           `json:"path"`
 		Comments []*model.Comment `json:"comments"`
@@ -82,6 +102,7 @@ func wireFixtures() (map[string]string, error) {
 			Path: "a.go",
 			Comments: []*model.Comment{
 				model.NewCommentWithContext("a note", 7, "Test User", "blob-a", []string{"before", "the line", "after"}, 1),
+				importedComment,
 			},
 		},
 	}

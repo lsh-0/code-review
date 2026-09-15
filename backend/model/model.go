@@ -35,6 +35,19 @@ func (a Anchor) IsAdrift() bool {
 	return len(a.Context) == 0
 }
 
+// where an imported comment came from. `Source` keys into `Review.Sources`;
+// `ForeignID` is the comment's id in the imported document, which is what makes a
+// re-import idempotent.
+//
+// A comment carries this by pointer, and a nil `Origin` means the comment was
+// written locally in this tool. The pointer is what keeps the field off a local
+// comment on disk: `omitempty` does not suppress a zero struct, so a value type
+// here would write `"origin":{}` onto every local comment.
+type Origin struct {
+	Source    string `json:"source"`
+	ForeignID string `json:"foreign_id"`
+}
+
 // A Comment is a review note against a line of the diff. A reply is just a
 // Comment whose ParentID is the id of the comment it answers; a root comment
 // has an empty ParentID. Replies form a flat thread under their root and are
@@ -42,9 +55,14 @@ func (a Anchor) IsAdrift() bool {
 //
 // A comment is anchored through `Anchors`, an ordered history of `Anchor`
 // records (one per distinct blob it has been reconciled against). `Anchors[0]`
-// is the creation anchor and is always good. The comment's current placement
-// and whether it is outdated are derived from the most-recent anchor, never
-// stored.
+// is the creation anchor. It is good for a locally created comment, whose author
+// picked a line that exists; an imported comment's may be adrift when its stated
+// line is absent from the diff. The comment's current placement and whether it is
+// outdated are derived from the most-recent anchor, never stored.
+//
+// A nil `Origin` marks a locally written comment. An imported comment's content
+// is read-only: it names its source, and only its status and its local replies
+// may change.
 type Comment struct {
 	ID       string        `json:"id"`
 	ParentID string        `json:"parent_id,omitempty"`
@@ -52,11 +70,46 @@ type Comment struct {
 	Content  string        `json:"content"`
 	Status   CommentStatus `json:"status"`
 	Anchors  []Anchor      `json:"anchors,omitempty"`
+	Origin   *Origin       `json:"origin,omitempty"`
+}
+
+// report whether the comment was imported from an external review, in which case
+// its content must not be edited and it must not be deleted.
+func (c *Comment) IsForeign() bool {
+	return c.Origin != nil && c.Origin.Source != ""
+}
+
+// the source id the comment was imported from, or "" for a local comment. Used to
+// group comments by provenance without every caller unpacking the pointer.
+func (c *Comment) SourceID() string {
+	if c.Origin == nil {
+		return ""
+	}
+	return c.Origin.Source
 }
 
 type FileDiff struct {
 	FilePath string     `json:"file_path"`
 	Comments []*Comment `json:"comments"`
+}
+
+// an external review imported into this one. `ID` is what an imported comment's
+// `Origin.Source` names, and is derived from the document rather than the file it
+// was read from, so re-importing the same pull request from a renamed file still
+// matches. `SourceBranch` and `TargetBranch` are the imported pull request's own
+// branches, which let a reviewer see that an import does not belong to the
+// branches under review.
+// `Title` is the imported pull request's own title, kept as its own field rather
+// than only folded into `Label`, so a consumer can read it without parsing the
+// label. It is empty when the source document carried no title.
+type Source struct {
+	ID           string `json:"id"`
+	Label        string `json:"label"`
+	PullRequest  int    `json:"pull_request"`
+	Title        string `json:"title,omitempty"`
+	SourceBranch string `json:"source_branch"`
+	TargetBranch string `json:"target_branch"`
+	ImportedAt   string `json:"imported_at"`
 }
 
 type Review struct {
@@ -71,6 +124,10 @@ type Review struct {
 	// carry no file path, line number, or context.
 	Comments    []*Comment  `json:"comments,omitempty"`
 	MarkedFiles MarkedFiles `json:"marked_files"`
+	// Sources are the external reviews imported into this one, one entry per
+	// import. Absent from a review with no imports, so a state file written
+	// without ever importing is unchanged on disk.
+	Sources []Source `json:"sources,omitempty"`
 }
 
 // a file the reviewer has marked as done, recording the git blob SHA of the
@@ -209,6 +266,7 @@ func (c *Comment) UnmarshalJSON(data []byte) error {
 		Content       string        `json:"content"`
 		Status        CommentStatus `json:"status"`
 		Anchors       []Anchor      `json:"anchors,omitempty"`
+		Origin        *Origin       `json:"origin,omitempty"`
 		LineNumber    int           `json:"line_number,omitempty"`
 		ContextBefore string        `json:"context_before,omitempty"`
 		ContextLine   string        `json:"context_line,omitempty"`
@@ -224,6 +282,7 @@ func (c *Comment) UnmarshalJSON(data []byte) error {
 	c.Content = w.Content
 	c.Status = w.Status
 	c.Anchors = w.Anchors
+	c.Origin = w.Origin
 
 	// already in anchor form, or an unanchored comment (reply, review-level):
 	// nothing to upgrade.
@@ -444,6 +503,29 @@ func (r *Review) GetComment(commentID string) *Comment {
 
 func (r *Review) DeleteComment(commentID string) {
 	r.Comments = removeComment(r.Comments, commentID)
+}
+
+// the imported source with `id`, or nil when the review has no such source.
+func (r *Review) GetSource(id string) *Source {
+	for i := range r.Sources {
+		if r.Sources[i].ID == id {
+			return &r.Sources[i]
+		}
+	}
+	return nil
+}
+
+// record `source` in the review's source list, replacing the existing entry with
+// the same id. A re-import updates its registry entry in place rather than adding
+// a second one for the same pull request.
+func (r *Review) UpsertSource(source Source) {
+	for i := range r.Sources {
+		if r.Sources[i].ID == source.ID {
+			r.Sources[i] = source
+			return
+		}
+	}
+	r.Sources = append(r.Sources, source)
 }
 
 // report whether `filePath` is in the marked-files set.

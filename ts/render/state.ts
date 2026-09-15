@@ -4,8 +4,9 @@
 // (what is selected, what is cached for rendering) — not domain logic, which
 // lives in the pure core.
 
-import type { Comment, DiffFile } from "../core/types.ts";
+import type { Comment, DiffFile, Source } from "../core/types.ts";
 import { primaryFile } from "../core/selection.ts";
+import { visibleComments } from "../core/comments.ts";
 
 export interface ViewState {
   // the ordered set of files shown in the diff pane. A plain click selects one;
@@ -40,6 +41,15 @@ export interface ViewState {
   // the key of the active file-list grouper; "none" renders a flat list.
   fileGrouping: string;
 
+  // the external reviews imported into this review, from `GetReviewInfo`. The
+  // visibility toggles are built from these plus a leading local-feedback entry.
+  sources: Source[];
+
+  // the source ids whose comments are hidden. In-session only, like `fileFilter`
+  // and `fileGrouping`: it is never persisted, so the CLI and an agent always see
+  // every comment regardless of what the reviewer has hidden here.
+  hiddenSources: Set<string>;
+
   // transient modal context: which file/line/comment the open modal acts on.
   modal: {
     file: string;
@@ -71,6 +81,8 @@ export const state: ViewState = {
   markedFiles: new Set(),
   fileFilter: "",
   fileGrouping: "none",
+  sources: [],
+  hiddenSources: new Set(),
   modal: {
     file: "",
     lineNumber: 0,
@@ -81,10 +93,23 @@ export const state: ViewState = {
   zoomLevel: 1.0,
 };
 
-// the comments for a surface: a file's cached comments, or the review-level
-// comments under the empty-path key. Returns an empty array when absent, so
-// callers can read it directly.
+// the comments for a surface that belong to a visible source: a file's cached
+// comments, or the review-level comments under the empty-path key. Returns an
+// empty array when absent, so callers can read it directly.
+//
+// This is the one place source visibility is applied. Every rendered surface reads
+// its comments through here — the line threads, the untethered block, the overview
+// and the file-list status pills — so hiding a source takes effect everywhere at
+// once rather than at each call site. Use `allCommentsFor` where the unfiltered
+// list is required.
 export function commentsFor(filePath: string): Comment[] {
+  return visibleComments(allCommentsFor(filePath), state.hiddenSources);
+}
+
+// every cached comment for a surface, hidden sources included. For the paths that
+// must not be filtered: patching the cache after a mutation, and finding a comment
+// by id regardless of what is currently shown.
+export function allCommentsFor(filePath: string): Comment[] {
   return state.commentsCache.get(filePath) ?? [];
 }
 

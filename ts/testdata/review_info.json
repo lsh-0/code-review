@@ -1,6 +1,17 @@
 {
   "current_user": "Test User",
-  "repo_path": "/tmp/wire-fixtures-repo66636310",
+  "repo_path": "/tmp/wire-fixtures-repo3764963603",
   "source_branch": "feature",
+  "sources": [
+    {
+      "id": "bb:1430",
+      "imported_at": "2026-09-14T12:00:00Z",
+      "label": "Bitbucket #1430 — a title",
+      "pull_request": 1430,
+      "source_branch": "feature-1430--telemetry",
+      "target_branch": "master",
+      "title": "a title"
+    }
+  ],
   "target_branch": "main"
 }

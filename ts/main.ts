@@ -6,10 +6,11 @@
 import * as api from "./client.ts";
 import type { WorkingTreeStatus } from "./core/types.ts";
 import { isFileDirty, workingTreeBannerText } from "./core/worktree.ts";
-import { byId, el, requireId } from "./dom.ts";
+import { byId, clear, el, requireId } from "./dom.ts";
 import { state } from "./render/state.ts";
 import { clampPaneWidth } from "./core/panes.ts";
 import { type CommentActions } from "./render/comments.ts";
+import { sourceToggles } from "./core/comments.ts";
 import { type DiffCallbacks, renderCombinedDiff } from "./render/hunks.ts";
 import { renderFileList } from "./render/filelist.ts";
 import { groupers } from "./core/grouping.ts";
@@ -34,6 +35,7 @@ import {
 } from "./render/modals.ts";
 import {
   ensureFileDiffs,
+  loadAllComments,
   loadCommentedFiles,
   loadComments,
   loadDiffFiles,
@@ -215,6 +217,10 @@ async function performFullRefresh(): Promise<void> {
   await recomputeDiff();
   await loadDiffFiles();
   await refreshWorkingTreeStatus();
+  // an import by the CLI or an agent adds a source while the GUI is open, so the
+  // toggles are rebuilt here rather than only at startup.
+  await loadReviewInfo();
+  renderSourceToggles();
   renderFileList(fileListCallbacks);
   if (state.overviewActive) {
     const { reviewComments, files } = await loadCommentedFiles();
@@ -492,6 +498,10 @@ function setupEventHandlers(): void {
     "click",
     () => void copyStatePrompt(),
   );
+  byId("import-btn")?.addEventListener("click", () => void triggerImport());
+  byId("import-banner-dismiss")?.addEventListener("click", () => {
+    byId("import-banner")?.classList.add("hidden");
+  });
   byId("file-dirty-difftool-btn")?.addEventListener("click", () => {
     const filePath = state.currentFile;
     if (filePath === "") {
@@ -554,14 +564,108 @@ function setupEventHandlers(): void {
   }, { passive: false });
 }
 
-// load the review info into the header.
+// load the review info into the header, and the imported sources into the state
+// the visibility toggles are built from.
 async function loadReviewInfo(): Promise<void> {
   const info = await api.getReviewInfo();
   state.currentUser = info.current_user;
+  state.sources = info.sources ?? [];
   const branchInfo = byId("branch-info");
   if (branchInfo) {
     branchInfo.textContent = `${info.source_branch} → ${info.target_branch}`;
   }
+}
+
+// render the source-visibility control from `sourceToggles`, which decides the
+// entries and their order. Every source starts visible; the setting is in-session,
+// like the grouping, and resets on reload.
+//
+// An empty entry list means there is no choice to offer (nothing imported), so the
+// control is hidden rather than rendered empty.
+export function renderSourceToggles(): void {
+  const container = byId("source-toggles");
+  if (!container) {
+    return;
+  }
+  clear(container);
+
+  const entries = sourceToggles(state.sources, state.hiddenSources);
+  if (entries.length === 0) {
+    container.classList.add("hidden");
+    return;
+  }
+  container.classList.remove("hidden");
+
+  for (const entry of entries) {
+    const item = el("label", { classes: ["source-toggle"] });
+    const box = el("input");
+    box.setAttribute("type", "checkbox");
+    (box as HTMLInputElement).checked = entry.visible;
+    box.addEventListener("change", () => {
+      if ((box as HTMLInputElement).checked) {
+        state.hiddenSources.delete(entry.id);
+      } else {
+        state.hiddenSources.add(entry.id);
+      }
+      void reRenderForVisibility();
+    });
+    item.appendChild(box);
+    item.appendChild(el("span", { text: entry.label }));
+    container.appendChild(item);
+  }
+}
+
+// re-render the file list and the visible surface after a visibility change. No
+// bridge call is made: visibility is view state and the comments are already
+// cached, so nothing is fetched and nothing is persisted.
+async function reRenderForVisibility(): Promise<void> {
+  renderFileList(fileListCallbacks);
+  if (state.overviewActive) {
+    const { reviewComments, files } = await loadCommentedFiles();
+    await renderOverview(reviewComments, files, overviewCallbacks);
+    return;
+  }
+  if (state.selectedFiles.length > 0) {
+    await renderSelection();
+  }
+}
+
+// prompt for an external review document, import it, and show what it did.
+//
+// The file dialog and the import both run in the backend. A dismissed dialog
+// changes nothing and reports nothing. After a successful import the review info
+// and every comment surface are reloaded, so the imported feedback and its new
+// source toggle appear without a manual refresh.
+async function triggerImport(): Promise<void> {
+  const result = await api.importForeignReview();
+  if (result.cancelled) {
+    return;
+  }
+
+  await loadReviewInfo();
+  await loadAllComments();
+  renderSourceToggles();
+  await reRenderForVisibility();
+
+  flashSuccess(byId("import-btn"));
+  showImportReport(result.lines);
+}
+
+// show an import's report in its own banner, dismissed by the reviewer.
+//
+// It has a banner of its own rather than borrowing the working-tree one, which the
+// working-tree watcher owns and rewrites on every poll.
+function showImportReport(lines: string[]): void {
+  if (lines.length === 0) {
+    return;
+  }
+  const banner = byId("import-banner");
+  const text = byId("import-banner-text");
+  if (!banner || !text) {
+    return;
+  }
+  text.textContent = lines.join(" · ");
+  banner.classList.remove("hidden");
 }
 
 async function initialize(): Promise<void> {
@@ -583,6 +687,7 @@ async function initialize(): Promise<void> {
   await loadReviewInfo();
   await loadDiffFiles();
   await refreshWorkingTreeStatus();
+  renderSourceToggles();
   renderFileList(fileListCallbacks);
   setupEventHandlers();
   setupReviewChangedBanner();

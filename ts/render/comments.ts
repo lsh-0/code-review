@@ -7,6 +7,7 @@ import type { Comment } from "../core/types.ts";
 import {
   authorLabel,
   getReplies,
+  isForeign,
   lastGoodContext,
   outdatedComments,
   threadAuthors,
@@ -111,6 +112,11 @@ export function lineCommentThread(
 // render a comment (root or reply). A reply (parent_id set) is styled as a
 // reply, omits the status badge, and offers no status actions — only root
 // comments carry a meaningful status. Replies nest after the content.
+//
+// An imported comment is offered no Edit or Delete action: its text belongs to the
+// review it came from. Every other action stays, so it can be replied to and its
+// status changed. A local reply under an imported comment is a local comment and
+// keeps the full action set.
 function createCommentElement(
   filePath: string,
   comment: Comment,
@@ -119,10 +125,13 @@ function createCommentElement(
 ): HTMLElement {
   const isReply = !!comment.parent_id;
   const commentID = comment.id;
+  const foreign = isForeign(comment);
 
-  const elem = el("div", {
-    classes: isReply ? ["comment", "comment-reply"] : ["comment"],
-  });
+  const classes = isReply ? ["comment", "comment-reply"] : ["comment"];
+  if (foreign) {
+    classes.push("comment-foreign");
+  }
+  const elem = el("div", { classes });
 
   const header = el("div", { classes: ["comment-header"] });
   if (!isReply) {
@@ -137,6 +146,14 @@ function createCommentElement(
   if (label) {
     header.appendChild(
       el("span", { classes: ["comment-author"], text: ` ${label}` }),
+    );
+  }
+  if (foreign) {
+    header.appendChild(
+      el("span", {
+        classes: ["comment-origin"],
+        text: sourceLabel(comment.origin?.source ?? ""),
+      }),
     );
   }
   elem.appendChild(header);
@@ -170,12 +187,15 @@ function createCommentElement(
       }),
     );
   }
-  actionsElem.appendChild(
-    el("button", {
-      text: "Edit",
-      onClick: () => actions.onEdit(filePath, commentID, comment.content),
-    }),
-  );
+  // an imported comment's text is fixed: no Edit, and no Delete below.
+  if (!foreign) {
+    actionsElem.appendChild(
+      el("button", {
+        text: "Edit",
+        onClick: () => actions.onEdit(filePath, commentID, comment.content),
+      }),
+    );
+  }
   if (!isReply) {
     if (comment.status === "active") {
       actionsElem.appendChild(
@@ -199,14 +219,24 @@ function createCommentElement(
       );
     }
   }
-  actionsElem.appendChild(
-    el("button", {
-      classes: ["delete-btn"],
-      text: "Delete",
-      onClick: () => actions.onDelete(filePath, commentID),
-    }),
-  );
+  if (!foreign) {
+    actionsElem.appendChild(
+      el("button", {
+        classes: ["delete-btn"],
+        text: "Delete",
+        onClick: () => actions.onDelete(filePath, commentID),
+      }),
+    );
+  }
 
   elem.appendChild(actionsElem);
   return elem;
+}
+
+// the display label of a source id, from the review's sources. Falls back to the
+// bare id when the source is not in the list, so a comment always says where it
+// came from.
+function sourceLabel(sourceID: string): string {
+  const source = state.sources.find((s) => s.id === sourceID);
+  return source ? source.label : sourceID;
 }

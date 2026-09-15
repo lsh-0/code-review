@@ -16,7 +16,29 @@
         ],
         "author": "Test User",
         "content": "a note",
-        "id": "f4d0f0ae8fb2ec37",
+        "id": "a48a95cf2b874fbf",
+        "status": "active"
+      },
+      {
+        "anchors": [
+          {
+            "blob": "blob-a",
+            "context": [
+              "before",
+              "the line",
+              "after"
+            ],
+            "line_number": 9,
+            "offset": 1
+          }
+        ],
+        "author": "review-bot (bot)",
+        "content": "an imported finding",
+        "id": "79f9a2fce0440656",
+        "origin": {
+          "foreign_id": "856483458",
+          "source": "bb:1430"
+        },
         "status": "active"
       }
     ],

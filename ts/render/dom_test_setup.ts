@@ -46,6 +46,8 @@ export function setupDom(): HTMLDocument {
   state.markedFiles = new Set();
   state.fileFilter = "";
   state.fileGrouping = "none";
+  state.sources = [];
+  state.hiddenSources = new Set();
 
   return doc;
 }

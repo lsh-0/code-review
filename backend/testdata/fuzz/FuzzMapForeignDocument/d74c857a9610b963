@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"pull_request\":{\"id\":1},\"file_feedBACk\":[{\"loCAtion\":{\"kind\":\"file_revision\",\"pAth\":\"0\",\"position\":{\"kind\":\"updated\",\"lines\":{\"first\":1,\"lAst\":1}}},\"resolution\":{\"stAte\":\"resolved\"},\"root\":{\"Author\":{\"kind\":\"human\"},\"BodY\":{\"kind\":\"markdown\"}}}]}")

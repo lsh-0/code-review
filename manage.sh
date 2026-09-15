@@ -192,6 +192,26 @@ cmd_test() {
     fi
 }
 
+# extended fuzzing of the import path. A plain `test` run exercises each fuzz
+# target's committed seed corpus only, which is fast; this explores beyond it.
+# Takes an optional per-target duration (default 30s).
+cmd_fuzz() {
+    local duration="${1:-30s}"
+    local targets="FuzzDecodeForeignDocument FuzzMapForeignDocument FuzzMergeIsIdempotent"
+
+    echo "Fuzzing the import path for $duration per target..."
+    echo ""
+    (
+        cd backend
+        for target in $targets; do
+            echo "=== $target ==="
+            # -run xxx matches no unit test, so only the fuzz target runs.
+            go test -run xxx -fuzz "$target" -fuzztime "$duration" . || exit 1
+            echo ""
+        done
+    )
+}
+
 cmd_setup() {
     echo "Checking system dependencies..."
 
@@ -246,6 +266,7 @@ Commands:
     wails.build        Build only the Wails application
     wails.dev          Run Wails in development mode with dev tools
     test               Run all unit tests with coverage reporting
+    fuzz [duration]    Fuzz the import path beyond its seed corpus (default 30s)
     lint               Tidy, format and vet the Go modules; fmt/lint the frontend
     release            Build optimised release binary to dist/
     release.install    Build release and install to ~/.local/bin
@@ -282,6 +303,10 @@ main() {
             ;;
         wails.dev)
             cmd_wails_dev
+            ;;
+        fuzz)
+            shift
+            cmd_fuzz "$@"
             ;;
         test)
             cmd_test

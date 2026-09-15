@@ -5,7 +5,7 @@
 // diff state to preserve, is rebuilt wholesale.
 
 import type { CommentMutationResult } from "../core/types.ts";
-import { getCommentsForLine } from "../core/comments.ts";
+import { fileCommentStatus, getCommentsForLine } from "../core/comments.ts";
 import { byId } from "../dom.ts";
 import {
   type CommentActions,
@@ -53,6 +53,12 @@ function cssEscape(value: string): string {
 // apply a mutation result incrementally. The affected file's cache is
 // overwritten, then either the overview is rebuilt (if active) or the touched
 // thread is patched and the file's status pill updated.
+//
+// The pill is recomputed from the visible cache rather than taken from the
+// result's `file_status`: the backend computes that over every comment and has no
+// knowledge of which sources the reviewer has hidden, so using it would restore a
+// pill for hidden feedback on the next mutation. The two agree whenever nothing is
+// hidden.
 export function applyMutation(
   result: CommentMutationResult,
   ctx: MutationContext,
@@ -66,7 +72,14 @@ export function applyMutation(
 
   patchLineThread(result.file_path, result.line_number, ctx.actions);
   patchOutdatedBlock(result.file_path, ctx.actions);
-  setFileStatusPill(result.file_path, result.file_status);
+  setFileStatusPill(result.file_path, visibleFileStatus(result.file_path));
+}
+
+// the file's comment-status pill from its visible comments, matching how the file
+// list derives it. "none" when no visible comment remains.
+function visibleFileStatus(filePath: string): string {
+  const comments = commentsFor(filePath);
+  return comments.length === 0 ? "none" : fileCommentStatus(comments);
 }
 
 // rebuild the untethered outdated-comments block at the top of the file view

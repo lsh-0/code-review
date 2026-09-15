@@ -14,6 +14,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 var version = "unreleased"
@@ -251,12 +252,22 @@ func (a *App) ReloadReview() error {
 	return nil
 }
 
+// the review's identifying information, plus the external sources imported into it
+// so the frontend can build one visibility toggle per source. `Sources` is an empty
+// array rather than null when nothing has been imported, so the frontend iterates it
+// without a nil check.
 func (a *App) GetReviewInfo() (string, error) {
 	type ReviewInfo struct {
-		RepoPath     string `json:"repo_path"`
-		SourceBranch string `json:"source_branch"`
-		TargetBranch string `json:"target_branch"`
-		CurrentUser  string `json:"current_user"`
+		RepoPath     string         `json:"repo_path"`
+		SourceBranch string         `json:"source_branch"`
+		TargetBranch string         `json:"target_branch"`
+		CurrentUser  string         `json:"current_user"`
+		Sources      []model.Source `json:"sources"`
+	}
+
+	sources := a.review.Sources
+	if sources == nil {
+		sources = []model.Source{}
 	}
 
 	info := ReviewInfo{
@@ -264,6 +275,7 @@ func (a *App) GetReviewInfo() (string, error) {
 		SourceBranch: a.review.SourceBranch,
 		TargetBranch: a.review.TargetBranch,
 		CurrentUser:  a.userName,
+		Sources:      sources,
 	}
 
 	data, err := json.Marshal(info)
@@ -450,6 +462,80 @@ func (a *App) GetMarkedFiles() (string, error) {
 	return string(data), nil
 }
 
+// the outcome of a GUI import, as the frontend renders it. `Cancelled` is true when
+// the reviewer dismissed the file dialog, which is not an error and needs no message.
+type ImportResult struct {
+	Cancelled bool     `json:"cancelled"`
+	Source    string   `json:"source"`
+	Lines     []string `json:"lines"`
+}
+
+// prompt for an external review-feedback document and merge it into the review.
+//
+// Opens a native file dialog, then runs the same read, decode, place and merge path
+// the CLI's `import` command uses. Dismissing the dialog reports a cancelled result
+// and changes nothing. A read, decode, or diff failure returns an error before
+// anything is written, so a failed import leaves the state file untouched.
+//
+// The imported comments are placed against the diff already in memory, so the caller
+// does not need to recompute it first.
+func (a *App) ImportForeignReview() (string, error) {
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Import review feedback",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Review feedback (*.json)", Pattern: "*.json"},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to open the file dialog: %w", err)
+	}
+	if path == "" {
+		return marshalImportResult(ImportResult{Cancelled: true})
+	}
+
+	doc, err := loadForeignDocument(path)
+	if err != nil {
+		return "", err
+	}
+
+	report := importForeignReview(
+		a.review,
+		doc,
+		diffLinesByPath(a.diffFiles),
+		a.importBlobs(),
+		time.Now().UTC().Format(time.RFC3339),
+	)
+
+	if err := a.persist(); err != nil {
+		return "", err
+	}
+
+	return marshalImportResult(ImportResult{Source: report.Source, Lines: report.Lines()})
+}
+
+// the current blob SHA of every file in the diff, for anchoring imported comments. A
+// lookup failure yields an empty map: the affected anchors then carry an empty blob,
+// which the reconciler treats as a baseline awaiting backfill.
+func (a *App) importBlobs() map[string]string {
+	paths := make([]string, 0, len(a.diffFiles))
+	for _, file := range a.diffFiles {
+		paths = append(paths, file.Path)
+	}
+	blobs, err := BlobSHAs(a.repoPath, a.review.SourceBranch, paths)
+	if err != nil {
+		return map[string]string{}
+	}
+	return blobs
+}
+
+func marshalImportResult(result ImportResult) (string, error) {
+	data, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 func (a *App) SetFileMarked(filePath string, marked bool) error {
 	if marked {
 		// record the file's current blob SHA at the source-branch HEAD, so a
@@ -565,10 +651,20 @@ func (a *App) AddReviewComment(content string) (string, error) {
 	return a.saveAndResult("", -1)
 }
 
+// change a comment's content.
+//
+// Refuses an imported comment: its text belongs to the review it was imported from
+// and must keep the wording it was written with. Every other action on an imported
+// comment (reply, resolve, ignore, reactivate) is permitted, so only the content is
+// held fixed. The refusal happens before any mutation, so the state file is
+// untouched.
 func (a *App) UpdateComment(filePath string, commentID string, content string) (string, error) {
 	comment := a.findComment(filePath, commentID)
 	if comment == nil {
 		return "", fmt.Errorf("comment not found: %s", commentID)
+	}
+	if comment.IsForeign() {
+		return "", fmt.Errorf("comment %s was imported from %s: its text cannot be changed", commentID, comment.SourceID())
 	}
 
 	comment.UpdateContent(content)
@@ -623,7 +719,17 @@ func (a *App) ReactivateComment(filePath string, commentID string) (string, erro
 	return a.saveAndResult(filePath, model.CommentRootLine(a.commentsFor(filePath), commentID))
 }
 
+// remove a comment, and its replies when it is a root.
+//
+// Refuses an imported comment: it belongs to the review it was imported from, and a
+// re-import would restore it anyway. A local reply to an imported comment is a local
+// comment and deletes normally. The refusal happens before any mutation, so the
+// state file is untouched.
 func (a *App) DeleteComment(filePath string, commentID string) (string, error) {
+	if comment := a.findComment(filePath, commentID); comment != nil && comment.IsForeign() {
+		return "", fmt.Errorf("comment %s was imported from %s: it cannot be deleted", commentID, comment.SourceID())
+	}
+
 	// capture the affected thread's line before removing the comment, since the
 	// root line cannot be looked up once it is gone.
 	line := model.CommentRootLine(a.commentsFor(filePath), commentID)

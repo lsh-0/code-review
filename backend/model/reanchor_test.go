@@ -315,3 +315,142 @@ func TestReanchorCommentsUnknownBlobLeavesCommentUntouched(t *testing.T) {
 		t.Errorf("expected the comment to keep line 2, got %d", comment.CurrentLineNumber())
 	}
 }
+
+func TestAnchorAtLinePlacesAndCapturesAWindow(t *testing.T) {
+	given := []DiffLineRef{
+		{"a", 1}, {"b", 2}, {"c", 3}, {"d", 4}, {"e", 5}, {"f", 6}, {"g", 7}, {"h", 8},
+	}
+
+	actual := AnchorAtLine("blob-1", 5, given)
+
+	if actual.IsAdrift() {
+		t.Fatal("expected a line present in the diff to produce a good anchor")
+	}
+	if actual.Blob != "blob-1" {
+		t.Errorf("blob: got %q, want %q", actual.Blob, "blob-1")
+	}
+	if actual.LineNumber != 5 {
+		t.Errorf("line: got %d, want 5", actual.LineNumber)
+	}
+	// radius 3 around index 4 ("e"), clipped at neither edge: [b c d e f g h].
+	expected := []string{"b", "c", "d", "e", "f", "g", "h"}
+	if !equalStrings(actual.Context, expected) {
+		t.Errorf("context: got %v, want %v", actual.Context, expected)
+	}
+	if actual.Context[actual.Offset] != "e" {
+		t.Errorf("offset %d points at %q, want %q", actual.Offset, actual.Context[actual.Offset], "e")
+	}
+}
+
+// the window is clipped at the start of the slice, so the anchored line sits at a
+// smaller offset than the capture radius.
+func TestAnchorAtLineClipsAtTheStart(t *testing.T) {
+	given := []DiffLineRef{{"a", 1}, {"b", 2}, {"c", 3}, {"d", 4}}
+
+	actual := AnchorAtLine("blob-1", 2, given)
+
+	if actual.Offset != 1 {
+		t.Errorf("offset: got %d, want 1", actual.Offset)
+	}
+	if actual.Context[actual.Offset] != "b" {
+		t.Errorf("anchored line: got %q, want %q", actual.Context[actual.Offset], "b")
+	}
+}
+
+func TestAnchorAtLineAbsentLineIsAdrift(t *testing.T) {
+	given := []DiffLineRef{{"a", 1}, {"b", 2}}
+
+	actual := AnchorAtLine("blob-1", 99, given)
+
+	if !actual.IsAdrift() {
+		t.Error("expected a line absent from the diff to produce an adrift anchor")
+	}
+	if actual.Blob != "blob-1" {
+		t.Errorf("expected the adrift anchor to carry the blob, got %q", actual.Blob)
+	}
+	if actual.LineNumber != 0 {
+		t.Errorf("expected an adrift anchor to carry no line, got %d", actual.LineNumber)
+	}
+}
+
+func TestAnchorAtLineEmptyDiffIsAdrift(t *testing.T) {
+	actual := AnchorAtLine("blob-1", 5, nil)
+
+	if !actual.IsAdrift() {
+		t.Error("expected an empty diff to produce an adrift anchor")
+	}
+}
+
+// a comment anchored by `AnchorAtLine` (as an import does) must reconcile by exactly
+// the rules that apply to a locally created comment: the reconciler cannot tell the
+// two apart, so an import needs no separate placement path.
+func TestImportedAnchorReconcilesLikeALocalComment(t *testing.T) {
+	// as an import builds it: a good first anchor at line 5 of the current content.
+	// The captured window is [b c d target f g] with the anchored line at offset 3.
+	lines := []DiffLineRef{
+		{"a", 1}, {"b", 2}, {"c", 3}, {"d", 4}, {"target", 5}, {"f", 6}, {"g", 7},
+	}
+	given := AnchorAtLine("blob-1", 5, lines)
+	review, comment := reviewWithAnchoredComment("a.go", given)
+
+	// three lines are inserted at the top of the file, shifting every line down by
+	// three. The captured window survives intact, so the comment follows its code.
+	review.ReanchorComments(
+		map[string]string{"a.go": "blob-2"},
+		map[string][]DiffLineRef{"a.go": {
+			{"new1", 1}, {"new2", 2}, {"new3", 3},
+			{"a", 4}, {"b", 5}, {"c", 6}, {"d", 7}, {"target", 8}, {"f", 9}, {"g", 10},
+		}},
+	)
+
+	if comment.IsOutdated() {
+		t.Error("expected the imported comment to follow its code, not go adrift")
+	}
+	if actual := comment.CurrentLineNumber(); actual != 8 {
+		t.Errorf("expected the comment to re-anchor at line 8, got %d", actual)
+	}
+	if len(comment.Anchors) != 2 {
+		t.Errorf("expected one appended anchor, got %d", len(comment.Anchors))
+	}
+}
+
+// an edit *within* an imported comment's own captured window destroys the match, so
+// the comment goes adrift rather than being placed on code that no longer resembles
+// what it was written against. This is the same outcome a local comment gets, and it
+// is the reason blind placement is reported rather than assumed correct.
+func TestImportedAnchorGoesAdriftWhenItsWindowIsRewritten(t *testing.T) {
+	lines := []DiffLineRef{
+		{"a", 1}, {"b", 2}, {"c", 3}, {"d", 4}, {"target", 5}, {"f", 6}, {"g", 7},
+	}
+	given := AnchorAtLine("blob-1", 5, lines)
+	review, comment := reviewWithAnchoredComment("a.go", given)
+
+	// five unrelated lines are inserted in the middle of the captured window.
+	review.ReanchorComments(
+		map[string]string{"a.go": "blob-2"},
+		map[string][]DiffLineRef{"a.go": {
+			{"a", 1}, {"b", 2}, {"c", 3}, {"d", 4}, {"new1", 5}, {"new2", 6},
+			{"new3", 7}, {"new4", 8}, {"new5", 9}, {"target", 10}, {"f", 11}, {"g", 12},
+		}},
+	)
+
+	if !comment.IsOutdated() {
+		t.Error("expected a comment whose window was rewritten to go adrift")
+	}
+}
+
+// an imported comment that started adrift (its stated line was absent) must recover
+// if its content later appears, using the same reuse-then-match rules.
+func TestImportedAdriftAnchorStaysAdriftWithoutContext(t *testing.T) {
+	given := AnchorAtLine("blob-1", 99, []DiffLineRef{{"a", 1}})
+	review, comment := reviewWithAnchoredComment("a.go", given)
+
+	review.ReanchorComments(
+		map[string]string{"a.go": "blob-2"},
+		map[string][]DiffLineRef{"a.go": {{"a", 1}, {"b", 2}}},
+	)
+
+	if !comment.IsOutdated() {
+		t.Error("expected a comment with no good context to remain adrift")
+	}
+}

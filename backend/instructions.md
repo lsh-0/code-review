@@ -3,7 +3,7 @@ This is the agent contract for the 'code-review' tool. It explains how to act on
 You act on the review entirely through the `code-review` command. Do not look for, read, or edit any state file by hand — the CLI is the interface, and it resolves the right review automatically from the repository and branch you are on. Run `code-review` in the repository, on the branch under review.
 
 Commands:
-- `code-review list` — the comments that need your attention (active root comments), each with an `id`, the `file` it sits on (empty for a review-level comment), its current `line`, an `outdated` flag, the `author`, and the `content`. This is where you find work.
+- `code-review list` — the comments that need your attention (active root comments), each with an `id`, the `file` it sits on (empty for a review-level comment), its current `line`, an `outdated` flag, the `author`, the `content`, and an `origin` when the comment was imported from an external review. This is where you find work.
 - `code-review show <id>` — one comment with its full reply thread and current placement.
 - `code-review status` — a summary of the review: the branches, the counts of comments by status, and the number of marked files.
 - `code-review resolve <id>` — mark a comment addressed. Run this once you have made the change the comment asks for.
@@ -11,11 +11,14 @@ Commands:
 - `code-review reply <id> <text>` — add a reply to a comment's thread. This is your channel back to the reviewer: use it to record a blocker, a question, or what you decided and held back.
 - `code-review comment <text>` — add a review-level (top-level) comment: overall feedback not anchored to any file.
 - `code-review unmark <file>` — remove a file from the reviewer's "reviewed" set. Run this for every source file you modify.
+- `code-review import <file>` — merge an external review-feedback document (from a Bitbucket or GitHub pull request) into this review. It reads the file only: no network request is made and no credential is read. It reports how many comments it imported, how many it placed at a line, how many are untethered, and any file path in the document that is absent from the current diff.
 - `code-review instructions` — print this contract.
 
 The discovery flow is `list` → `show` → act: run `code-review list` to find the comments needing attention, `code-review show <id>` to read one and its thread, then make the change and `code-review resolve <id>`. `code-review instructions` is the front door — start here if you need to recall how the CLI works.
 
 The `line` a comment reports is its last reconciled placement. When `outdated` is true the comment's code has moved and the line is no longer reliable; rely on the comment's content and surrounding context to locate the code, not the line number.
+
+A comment carrying an `origin` was imported from an external review. Address it exactly as you would a local comment: `resolve`, `reactivate` and `reply` all work on it. Its text is fixed — it belongs to the review it came from — so there is no command that edits it, and a re-import restores its wording. Your replies and its status are local and are yours to set. An imported comment is more likely than a local one to report `outdated`, because it was written against the pull request rather than against the current diff.
 
 To act on the review: address every comment `code-review list` returns. Do the smaller, mechanical changes first, then the larger ones. A comment must be addressed unless it is genuinely impossible; if a comment seems impossible, you have probably misunderstood it, so re-read it (`code-review show <id>`) rather than skip it. Make the requested change in the actual source file, then `code-review resolve <id>`. Changing the status _is_ the feedback, so additional follow-up commentary is typically unnecessary.
 

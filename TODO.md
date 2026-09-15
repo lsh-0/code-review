@@ -5,16 +5,6 @@ Each item is separated by `---` and has key-value metadata followed
 by optional free-text context.
 
 ---
-title: Import review feedback from Bitbucket and GitHub
-added: 2026-06-12
-effort: high
-tags: backend, integration, model
-summary: Pull existing PR review feedback from Bitbucket and GitHub into the tool so it can be worked through locally
-
-Work uses AI code review; the feedback is good but the platforms make
-it awkward to address. Importing it here allows a better conversation
-and thorough resolution using local tools.
----
 title: Publish an AppImage and investigate ARM builds
 added: 2026-06-13
 effort: medium

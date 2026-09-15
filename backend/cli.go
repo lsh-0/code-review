@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	flag "github.com/spf13/pflag"
 )
@@ -23,10 +24,46 @@ import (
 // path it was loaded from (and is saved back to), and the git user to attribute
 // new replies and comments to. It is assembled once per invocation by
 // `resolveReview`.
+//
+// `repoPath` is carried for the one command that must place comments against the
+// current diff (`import`), which needs the repository to compute it. Commands that
+// only read or mutate the state file ignore it.
 type reviewContext struct {
 	review    *model.Review
 	statePath string
 	userName  string
+	repoPath  string
+}
+
+// the placement inputs an import needs: the new-side diff lines and the current blob
+// SHA of every file in the diff between the review's branches.
+//
+// This is the one git-touching step of an import, and it is read-only. A blob-SHA
+// lookup failure is not fatal: the affected comments anchor with an empty blob, which
+// the reconciler treats as a baseline awaiting backfill, exactly as a comment added
+// during a transient git failure does.
+func importPlacement(ctx *reviewContext) (map[string][]model.DiffLineRef, map[string]string, error) {
+	diff, err := DiffQuery{
+		RepoPath: ctx.repoPath,
+		Base:     ctx.review.TargetBranch,
+		Head:     ctx.review.SourceBranch,
+	}.Run()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to compute the diff to place comments against: %w", err)
+	}
+
+	diffLines := diffLinesByPath(diff)
+
+	paths := make([]string, 0, len(diffLines))
+	for path := range diffLines {
+		paths = append(paths, path)
+	}
+	blobs, err := BlobSHAs(ctx.repoPath, ctx.review.SourceBranch, paths)
+	if err != nil {
+		blobs = map[string]string{}
+	}
+
+	return diffLines, blobs, nil
 }
 
 // commentView is the purpose-built JSON shape for a comment. It exposes the
@@ -34,6 +71,11 @@ type reviewContext struct {
 // `Line` is the comment's current placement and `Outdated` flags an adrift
 // anchor, both derived from the model rather than surfaced raw. `File` is empty
 // for a review-level comment. `Replies` is present only on a `show`.
+//
+// `Origin` names the external review an imported comment came from, and is absent
+// for a local one. An agent needs it to know before acting that the comment's text
+// cannot be edited. The foreign identifier behind it is an internal matching key
+// and is deliberately not exposed.
 type commentView struct {
 	ID       string      `json:"id"`
 	File     string      `json:"file"`
@@ -42,6 +84,7 @@ type commentView struct {
 	Author   string      `json:"author"`
 	Content  string      `json:"content"`
 	Status   string      `json:"status"`
+	Origin   string      `json:"origin,omitempty"`
 	Replies  []replyView `json:"replies,omitempty"`
 }
 
@@ -51,6 +94,7 @@ type replyView struct {
 	ID      string `json:"id"`
 	Author  string `json:"author"`
 	Content string `json:"content"`
+	Origin  string `json:"origin,omitempty"`
 }
 
 // statusView is the purpose-built JSON shape for `status`: the branches, the
@@ -76,6 +120,7 @@ func toCommentView(filePath string, comment *model.Comment) commentView {
 		Author:   comment.Author,
 		Content:  comment.Content,
 		Status:   string(comment.Status),
+		Origin:   comment.SourceID(),
 	}
 }
 
@@ -86,7 +131,12 @@ func threadReplies(comments []*model.Comment, rootID string) []replyView {
 	replies := make([]replyView, 0)
 	for _, comment := range comments {
 		if comment.ParentID == rootID {
-			replies = append(replies, replyView{ID: comment.ID, Author: comment.Author, Content: comment.Content})
+			replies = append(replies, replyView{
+				ID:      comment.ID,
+				Author:  comment.Author,
+				Content: comment.Content,
+				Origin:  comment.SourceID(),
+			})
 		}
 	}
 	return replies
@@ -286,6 +336,42 @@ func cmdUnmark(ctx *reviewContext, out io.Writer, args []string) error {
 	return saveReview(ctx, out, fmt.Sprintf("unmarked %s", args[0]))
 }
 
+// import — merge an external review-feedback document into this review and persist.
+//
+// Reads the document at the given path without modifying it, places its comments
+// against the current diff, and reports what it mapped. Issues no network request
+// and reads no credential: the document is produced elsewhere and arrives as a file.
+//
+// A read, decode, or diff failure returns an error before anything is written, so a
+// failed import leaves the state file untouched.
+func cmdImport(ctx *reviewContext, out io.Writer, args []string) error {
+	if err := requireArgs("import", args, 1, "<file>"); err != nil {
+		return err
+	}
+
+	doc, err := loadForeignDocument(args[0])
+	if err != nil {
+		return err
+	}
+
+	diffLines, blobs, err := importPlacement(ctx)
+	if err != nil {
+		return err
+	}
+
+	report := importForeignReview(ctx.review, doc, diffLines, blobs, time.Now().UTC().Format(time.RFC3339))
+
+	if err := SaveReview(ctx.statePath, ctx.review); err != nil {
+		return err
+	}
+	for _, line := range report.Lines() {
+		if _, err := fmt.Fprintln(out, line); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // instructions — print the embedded agent contract verbatim. Read-only and does
 // not resolve a review, so it works outside a repository.
 func cmdInstructions(out io.Writer, args []string) error {
@@ -369,6 +455,7 @@ var commands = map[string]command{
 	"reply":        {needs: needsReview, summary: "reply <id> <text> — reply to a comment", runReview: cmdReply},
 	"comment":      {needs: needsReview, summary: "comment <text> — add a review-level comment", runReview: cmdComment},
 	"unmark":       {needs: needsReview, summary: "unmark <file> — drop a file's reviewed mark", runReview: cmdUnmark},
+	"import":       {needs: needsReview, summary: "import <file> — merge external review feedback", runReview: cmdImport},
 	"instructions": {needs: needsNothing, summary: "print the agent contract", runStandalone: cmdInstructions},
 }
 
@@ -445,7 +532,12 @@ func resolveReview() (*reviewContext, error) {
 		return nil, fmt.Errorf("failed to load review: %w", err)
 	}
 
-	return &reviewContext{review: review, statePath: target.statePath, userName: target.userName}, nil
+	return &reviewContext{
+		review:    review,
+		statePath: target.statePath,
+		userName:  target.userName,
+		repoPath:  target.repoPath,
+	}, nil
 }
 
 // the sorted command names, for a stable help listing.

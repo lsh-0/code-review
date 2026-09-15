@@ -4,7 +4,77 @@
 // pure and testable without a DOM. The render layer holds the cache and passes
 // the relevant list in.
 
-import type { Anchor, Comment, FileStatus } from "./types.ts";
+import {
+  type Anchor,
+  type Comment,
+  type FileStatus,
+  localSourceID,
+  type Source,
+} from "./types.ts";
+
+// the source a comment belongs to: the source it was imported from, or
+// `localSourceID` when it was written here. Every comment belongs to exactly one,
+// which is what lets the visibility toggles treat local feedback as one source
+// among the imports.
+export function commentSource(comment: Comment): string {
+  return comment.origin?.source || localSourceID;
+}
+
+// whether a comment was imported from an external review, in which case its
+// content is read-only. Mirrors the Go `Comment.IsForeign`.
+export function isForeign(comment: Comment): boolean {
+  return !!comment.origin?.source;
+}
+
+// one entry in the source-visibility control: the id it toggles and the label it
+// shows.
+export interface SourceToggle {
+  id: string;
+  label: string;
+  visible: boolean;
+}
+
+// the source-visibility entries for a review, local feedback first.
+//
+// Local feedback is an entry here rather than a special case, so it toggles by the
+// same mechanism as any import. Returns an empty list when nothing has been
+// imported: the control would then hold a single toggle whose only effect is to hide
+// every comment in the review, so there is no choice to offer.
+export function sourceToggles(
+  sources: Source[],
+  hiddenSources: Set<string>,
+): SourceToggle[] {
+  if (sources.length === 0) {
+    return [];
+  }
+  return [
+    { id: localSourceID, label: "Local feedback" },
+    ...sources.map((s) => ({ id: s.id, label: s.label })),
+  ].map((entry) => ({ ...entry, visible: !hiddenSources.has(entry.id) }));
+}
+
+// the comments of a surface that belong to a visible source.
+//
+// A root is visible when its own source is visible. A reply's visibility follows
+// its root's source, not its own: a local reply to an imported comment is part of
+// that imported thread, so hiding the import hides the reply with it, and hiding
+// local feedback leaves it in place. A reply whose root is missing from `comments`
+// falls back to its own source.
+export function visibleComments(
+  comments: Comment[],
+  hiddenSources: Set<string>,
+): Comment[] {
+  if (hiddenSources.size === 0) {
+    return comments;
+  }
+  return comments.filter((c) => {
+    if (!c.parent_id) {
+      return !hiddenSources.has(commentSource(c));
+    }
+    const root = comments.find((candidate) => candidate.id === c.parent_id);
+    return !hiddenSources.has(commentSource(root ?? c));
+  });
+}
 
 // whether an anchor failed to locate its content: it has no captured context.
 // Mirrors the Go `Anchor.IsAdrift`.
