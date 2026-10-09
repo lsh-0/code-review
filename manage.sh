@@ -197,16 +197,25 @@ cmd_test() {
 # Takes an optional per-target duration (default 30s).
 cmd_fuzz() {
     local duration="${1:-30s}"
-    local targets="FuzzDecodeForeignDocument FuzzMapForeignDocument FuzzMergeIsIdempotent"
+    # each entry is `package:target`, since `-fuzz` accepts one package at a time.
+    local targets="
+        .:FuzzDecodeForeignDocument
+        .:FuzzMapForeignDocument
+        .:FuzzMergeIsIdempotent
+        ./feedback:FuzzEncodeRoundTrip
+        ./feedback/bitbucket:FuzzNormalise
+        ./feedback/bitbucket:FuzzParsePullRequestURL
+        ./feedback/bitbucket:FuzzParseRemote"
 
-    echo "Fuzzing the import path for $duration per target..."
+    echo "Fuzzing the import and fetch paths for $duration per target..."
     echo ""
     (
         cd backend
-        for target in $targets; do
-            echo "=== $target ==="
+        for entry in $targets; do
+            local package="${entry%%:*}" target="${entry#*:}"
+            echo "=== $package $target ==="
             # -run xxx matches no unit test, so only the fuzz target runs.
-            go test -run xxx -fuzz "$target" -fuzztime "$duration" . || exit 1
+            go test -run xxx -fuzz "^$target\$" -fuzztime "$duration" "$package" || exit 1
             echo ""
         done
     )

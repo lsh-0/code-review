@@ -636,3 +636,30 @@ func gitHead(t *testing.T, dir string) string {
 	}
 	return string(out)
 }
+
+// `schema` prints the committed schema file byte for byte, outside any repository.
+func TestSchemaPrintsTheCommittedFileOutsideARepository(t *testing.T) {
+	expected, err := os.ReadFile("feedback/import-document.v1.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	code, out, errOut := runCLIInDir(t, t.TempDir(), "schema")
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr %q", code, errOut)
+	}
+	if out != string(expected) {
+		t.Error("schema output differs from the committed schema file")
+	}
+}
+
+func TestSchemaRejectsArguments(t *testing.T) {
+	code, _, errOut := runCLIInDir(t, t.TempDir(), "schema", "extra")
+	if code == 0 {
+		t.Error("expected a non-zero exit for an extra argument")
+	}
+	if !strings.Contains(errOut, "usage") {
+		t.Errorf("expected usage, got %q", errOut)
+	}
+}

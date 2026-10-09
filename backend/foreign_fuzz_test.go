@@ -1,6 +1,7 @@
 package main
 
 import (
+	"code-review/feedback"
 	"code-review/model"
 	"os"
 	"strings"
@@ -36,7 +37,7 @@ func FuzzDecodeForeignDocument(f *testing.F) {
 	f.Add([]byte(`[]`))
 	f.Add([]byte(``))
 	f.Add([]byte(`null`))
-	f.Add([]byte(documentWith(fileThread("a.go", positionUpdated, 1, 1))))
+	f.Add([]byte(documentWith(fileThread("a.go", feedback.PositionUpdated, 1, 1))))
 	f.Add([]byte(documentWith(fileThreadRaw("a.go", `{"kind": "whole_file"}`))))
 	f.Add([]byte(documentWith(fileThreadRaw("a.go", `{"kind": "original", "lines": {"first": 1, "last": 1}}`))))
 	// deeply nested replies: the recursive decode and the recursive validation.
@@ -48,7 +49,7 @@ func FuzzDecodeForeignDocument(f *testing.F) {
 		})))))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		doc, err := decodeForeignDocument(data)
+		doc, err := feedback.Decode(data)
 		if err != nil {
 			// arbitrary bytes are usually not a document. Rejection is correct.
 			return
@@ -61,10 +62,10 @@ func FuzzDecodeForeignDocument(f *testing.F) {
 			t.Error("an accepted document has no pull request id")
 		}
 
-		for _, thread := range doc.threads() {
+		for _, thread := range doc.Threads() {
 			switch thread.Location.Kind {
-			case locationPullRequest:
-			case locationFileRevision:
+			case feedback.LocationPullRequest:
+			case feedback.LocationFileRevision:
 				if thread.Location.Path == "" {
 					t.Error("an accepted file-anchored thread has no path")
 				}
@@ -74,7 +75,7 @@ func FuzzDecodeForeignDocument(f *testing.F) {
 			}
 
 			switch thread.Resolution.State {
-			case resolutionUnresolved, resolutionResolved, resolutionResolvedWithoutInfo:
+			case feedback.ResolutionUnresolved, feedback.ResolutionResolved, feedback.ResolutionResolvedWithoutInfo:
 			default:
 				t.Errorf("an accepted thread carries an unrecognised resolution state %q", thread.Resolution.State)
 			}
@@ -84,21 +85,21 @@ func FuzzDecodeForeignDocument(f *testing.F) {
 
 // every span an accepted position exposes must be well formed, so no downstream caller
 // has to re-check what the decoder claims to have validated.
-func assertAcceptedPosition(t *testing.T, position foreignPosition) {
+func assertAcceptedPosition(t *testing.T, position feedback.Position) {
 	t.Helper()
 	switch position.Kind {
-	case positionWholeFile:
-	case positionOriginal, positionUpdated:
-		if !position.Lines.valid() {
+	case feedback.PositionWholeFile:
+	case feedback.PositionOriginal, feedback.PositionUpdated:
+		if !position.Lines.Valid() {
 			t.Errorf("an accepted %s position has a malformed span %d-%d",
 				position.Kind, position.Lines.First, position.Lines.Last)
 		}
-	case positionUnchanged:
-		if !position.OriginalLines.valid() {
+	case feedback.PositionUnchanged:
+		if !position.OriginalLines.Valid() {
 			t.Errorf("an accepted unchanged position has a malformed original span %d-%d",
 				position.OriginalLines.First, position.OriginalLines.Last)
 		}
-		if !position.UpdatedLines.valid() {
+		if !position.UpdatedLines.Valid() {
 			t.Errorf("an accepted unchanged position has a malformed updated span %d-%d",
 				position.UpdatedLines.First, position.UpdatedLines.Last)
 		}
@@ -115,7 +116,7 @@ func FuzzMapForeignDocument(f *testing.F) {
 	if data, err := os.ReadFile(foreignFixture); err == nil {
 		f.Add(data)
 	}
-	f.Add([]byte(documentWith(fileThread("a.go", positionUpdated, 1, 1))))
+	f.Add([]byte(documentWith(fileThread("a.go", feedback.PositionUpdated, 1, 1))))
 	f.Add([]byte(documentWith(threadJSON("a.go", `{"kind": "updated", "lines": {"first": 1, "last": 1}}`,
 		commentJSON(1, markdownBody("a"), false, []string{
 			commentJSON(2, markdownBody("b"), false, nil),
@@ -123,7 +124,7 @@ func FuzzMapForeignDocument(f *testing.F) {
 		})))))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		doc, err := decodeForeignDocument(data)
+		doc, err := feedback.Decode(data)
 		if err != nil {
 			return
 		}
@@ -259,12 +260,12 @@ func FuzzMergeIsIdempotent(f *testing.F) {
 	if data, err := os.ReadFile(foreignFixture); err == nil {
 		f.Add(data)
 	}
-	f.Add([]byte(documentWith(fileThread("a.go", positionUpdated, 1, 1))))
+	f.Add([]byte(documentWith(fileThread("a.go", feedback.PositionUpdated, 1, 1))))
 	f.Add([]byte(documentWith(threadJSON("a.go", `{"kind": "updated", "lines": {"first": 1, "last": 1}}`,
 		commentJSON(1, markdownBody("a"), false, []string{commentJSON(2, markdownBody("b"), false, nil)})))))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		doc, err := decodeForeignDocument(data)
+		doc, err := feedback.Decode(data)
 		if err != nil {
 			return
 		}

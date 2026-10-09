@@ -1,6 +1,7 @@
 package main
 
 import (
+	"code-review/feedback"
 	"code-review/model"
 	"strings"
 	"testing"
@@ -178,7 +179,7 @@ func TestMapLeavesAbsentLineUntethered(t *testing.T) {
 }
 
 func TestMapMultiLineSpanPlacesOneCommentAtFirstLine(t *testing.T) {
-	doc, err := decodeForeignDocument([]byte(documentWith(fileThread("a.go", positionUpdated, 12, 20))))
+	doc, err := feedback.Decode([]byte(documentWith(fileThread("a.go", feedback.PositionUpdated, 12, 20))))
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}
@@ -197,7 +198,7 @@ func TestMapMultiLineSpanPlacesOneCommentAtFirstLine(t *testing.T) {
 func TestMapUnchangedPositionUsesUpdatedSpan(t *testing.T) {
 	given := fileThreadRaw("a.go",
 		`{"kind": "unchanged", "original_lines": {"first": 4, "last": 4}, "updated_lines": {"first": 7, "last": 7}}`)
-	doc, err := decodeForeignDocument([]byte(documentWith(given)))
+	doc, err := feedback.Decode([]byte(documentWith(given)))
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}
@@ -226,7 +227,7 @@ func TestMapUnplaceablePositionsImportUntethered(t *testing.T) {
 
 	for _, test := range given {
 		t.Run(test.name, func(t *testing.T) {
-			doc, err := decodeForeignDocument([]byte(documentWith(fileThreadRaw("a.go", test.position))))
+			doc, err := feedback.Decode([]byte(documentWith(fileThreadRaw("a.go", test.position))))
 			if err != nil {
 				t.Fatalf("decode failed: %v", err)
 			}
@@ -269,7 +270,7 @@ func TestMapSkipsDeletedAndPendingComments(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			thread := threadJSON("a.go", `{"kind": "updated", "lines": {"first": 1, "last": 1}}`,
 				commentJSON(1, test.body, test.pend, nil))
-			doc, err := decodeForeignDocument([]byte(documentWith(thread)))
+			doc, err := feedback.Decode([]byte(documentWith(thread)))
 			if err != nil {
 				t.Fatalf("decode failed: %v", err)
 			}
@@ -291,7 +292,7 @@ func TestMapSkipsDeletedAndPendingComments(t *testing.T) {
 func TestMapSkippingARootSkipsItsThread(t *testing.T) {
 	reply := commentJSON(2, markdownBody("a reply"), false, nil)
 	root := commentJSON(1, `{"kind": "deleted"}`, false, []string{reply})
-	doc, err := decodeForeignDocument([]byte(documentWith(
+	doc, err := feedback.Decode([]byte(documentWith(
 		threadJSON("a.go", `{"kind": "updated", "lines": {"first": 1, "last": 1}}`, root))))
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
@@ -323,7 +324,7 @@ func TestMapFlattensNestedRepliesByReRooting(t *testing.T) {
 		"body": ` + markdownBody("root") + `, "created_at": "2026-09-04T03:59:34.961609Z",
 		"pending": false, "replies": [` + inner + `]}`
 
-	doc, err := decodeForeignDocument([]byte(documentWith(
+	doc, err := feedback.Decode([]byte(documentWith(
 		threadJSON("a.go", `{"kind": "updated", "lines": {"first": 1, "last": 1}}`, root))))
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
@@ -366,7 +367,7 @@ func TestMapNeverParentsAReplyToAReply(t *testing.T) {
 	outer := commentJSON(2, markdownBody("outer"), false, []string{inner})
 	root := commentJSON(1, markdownBody("root"), false, []string{outer})
 
-	doc, err := decodeForeignDocument([]byte(documentWith(
+	doc, err := feedback.Decode([]byte(documentWith(
 		threadJSON("a.go", `{"kind": "updated", "lines": {"first": 1, "last": 1}}`, root))))
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
@@ -412,7 +413,7 @@ func TestMapResolvedThreadStartsResolved(t *testing.T) {
 		}],
 		"file_feedback": []
 	}`
-	doc, err := decodeForeignDocument([]byte(given))
+	doc, err := feedback.Decode([]byte(given))
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}
@@ -746,7 +747,7 @@ func TestMergeReparentsIncomingRepliesWhenARootAdoptsItsStoredID(t *testing.T) {
 	root := commentJSON(1, markdownBody("root"), false, []string{reply})
 	raw := documentWith(threadJSON("a.go", `{"kind": "updated", "lines": {"first": 1, "last": 1}}`, root))
 
-	doc, err := decodeForeignDocument([]byte(raw))
+	doc, err := feedback.Decode([]byte(raw))
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}
@@ -806,7 +807,7 @@ func TestMapSkipsADeletedReplyAndKeepsItsSiblings(t *testing.T) {
 	third := commentJSON(4, markdownBody("third reply"), false, nil)
 	root := commentJSON(1, markdownBody("root"), false, []string{first, deleted, third})
 
-	doc, err := decodeForeignDocument([]byte(documentWith(
+	doc, err := feedback.Decode([]byte(documentWith(
 		threadJSON("a.go", `{"kind": "updated", "lines": {"first": 1, "last": 1}}`, root))))
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
@@ -841,7 +842,7 @@ func TestMapSkipsAPendingReply(t *testing.T) {
 	kept := commentJSON(3, markdownBody("a real reply"), false, nil)
 	root := commentJSON(1, markdownBody("root"), false, []string{pending, kept})
 
-	doc, err := decodeForeignDocument([]byte(documentWith(
+	doc, err := feedback.Decode([]byte(documentWith(
 		threadJSON("a.go", `{"kind": "updated", "lines": {"first": 1, "last": 1}}`, root))))
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
@@ -864,7 +865,7 @@ func TestMapSkipsAPendingReply(t *testing.T) {
 // a field.
 func TestReportLinesStateTheSkippedCount(t *testing.T) {
 	root := commentJSON(1, `{"kind": "deleted"}`, false, nil)
-	doc, err := decodeForeignDocument([]byte(documentWith(
+	doc, err := feedback.Decode([]byte(documentWith(
 		threadJSON("a.go", `{"kind": "updated", "lines": {"first": 1, "last": 1}}`, root))))
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)

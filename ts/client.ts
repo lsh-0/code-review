@@ -56,6 +56,7 @@ interface BoundApp {
   ReactivateComment(path: string, commentID: string): Promise<string>;
   DeleteComment(path: string, commentID: string): Promise<string>;
   ImportForeignReview(): Promise<string>;
+  FetchForeignReview(url: string): Promise<string>;
   RecomputeDiff(): Promise<void>;
   ReloadReview(): Promise<void>;
   SuspendWatch(watcher: string): Promise<void>;
@@ -306,6 +307,12 @@ export const deleteComment = (
 // and the import both run in the backend; this only carries back the report.
 export const importForeignReview = (): Promise<ImportResult> =>
   callJSON("ImportForeignReview", (a) => a.ImportForeignReview());
+
+// fetch the feedback on a hosted pull request and merge it into the review. An empty
+// url fetches the branch's own pull request. Retrieval and the merge run in the
+// backend; this only carries back the report, or rejects with the failure.
+export const fetchForeignReview = (url: string): Promise<ImportResult> =>
+  callJSON("FetchForeignReview", (a) => a.FetchForeignReview(url));
 
 export const recomputeDiff = (): Promise<void> =>
   callVoid("RecomputeDiff", (a) => a.RecomputeDiff());

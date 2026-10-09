@@ -1,0 +1,184 @@
+{
+  "pull_request": {
+    "id": 5405,
+    "title": "DCA11Y-3520 set explicit outline-color on focused checkbox/radio inputs",
+    "description": "## Context\nFixes DCA11Y-3520. Replaces PR #5403 (which just realigned fixtures to Chrome 150).\n\nThe a11y `outline-contrast-ratio` check reads `getComputedStyle(input).outlineColor`. Verified via probe PR #5404:\n\n| Element | Chrome 150 CI | Chrome 151 local |\n|---|---|---|\n| dark focused checkbox | `outline-color: rgb(16, 16, 16)` (near-black) | `outline-color: rgb(153, 200, 255)` (light blue) |\n| dark focused radio | `outline-color: rgb(16, 16, 16)` | `outline-color: rgb(153, 200, 255)` |\n\nBoth browsers compute the same source rule (`outline: 1px auto`) but resolve `outline-color: auto` differently, and on the dark background the Chrome-150 value has near-zero contrast — the check fires, tests go red on every Chrome bump.\n\n## Changes\n- `packages/core/src/less/forms-radios-and-checkboxes.less`: `.radio input:focus` and `.checkbox input:focus` now set `outline-color: @aui-focus-ring-color` (theme token `var(--aui-focus)`). The visible focus ring stays the pseudo-element border; this only fixes what the a11y check reads.\n- CHANGELOG entry under 9.12.15.\n\n## Testing\n- ACCESSIBILITYUNITDARK / ACCESSIBILITYUNITLIGHT plans on this branch. Verifying in-thread.\n\n## Notes\n- Probe PR #5404 can be closed once this is verified.\n- The inline-dialog fixture edits from #5403 aren't reproduced here — I'll investigate that case separately.",
+    "state": "merged",
+    "draft": false,
+    "author": {
+      "display_name": "Filip Nowakowski",
+      "account_id": "712020:7a8f6896-3e7a-4568-9655-498e1d900587",
+      "uuid": "{b42d7a4b-e7ad-4849-bc59-600c8129b033}",
+      "nickname": "Filip Nowakowski",
+      "kind": "human"
+    },
+    "created_at": "2026-08-03T07:13:15.154445Z",
+    "updated_at": "2026-08-05T06:07:00.879155Z",
+    "source": {
+      "branch": "issue/release/9.12.x/DCA11Y-3520-explicit-outline-color-focus",
+      "commit": "3e28005558ac"
+    },
+    "destination": { "branch": "release/9.12.x", "commit": "dbcea8c19329" },
+    "participants": [
+      {
+        "user": {
+          "display_name": "Filip Nowakowski",
+          "account_id": "712020:7a8f6896-3e7a-4568-9655-498e1d900587",
+          "uuid": "{b42d7a4b-e7ad-4849-bc59-600c8129b033}",
+          "nickname": "Filip Nowakowski",
+          "kind": "human"
+        },
+        "role": "participant",
+        "approved": false
+      },
+      {
+        "user": {
+          "display_name": "dc-core-bot",
+          "account_id": "712020:94072633-6f6e-4364-9f08-8c013269bb9f",
+          "uuid": "{ab0b7204-a3d4-4280-bbc2-2ee0d9131892}",
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "project_access_token"
+        },
+        "role": "participant",
+        "approved": false
+      },
+      {
+        "user": {
+          "display_name": "Michael Kemp",
+          "account_id": "5c355119b393bf4ce9561ec3",
+          "uuid": "{2c58fd4f-96a5-40e8-af41-22da206e5c6c}",
+          "nickname": "mkemp [Atlassian]",
+          "kind": "human"
+        },
+        "role": "reviewer",
+        "approved": true
+      },
+      {
+        "user": {
+          "display_name": "Piotrek",
+          "account_id": "712020:55b7c8c6-7cd1-40a5-affb-5ecda0b7c406",
+          "uuid": "{b8ceb65c-4e2e-43d3-8a54-fe5f9cd2b3b2}",
+          "nickname": "Piotrek",
+          "kind": "human"
+        },
+        "role": "reviewer",
+        "approved": false
+      }
+    ],
+    "reported_comment_count": 3,
+    "reported_task_count": 0
+  },
+  "discussion": [
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 2008376575,
+        "author": {
+          "display_name": "dc-core-bot",
+          "account_id": "712020:94072633-6f6e-4364-9f08-8c013269bb9f",
+          "uuid": "{ab0b7204-a3d4-4280-bbc2-2ee0d9131892}",
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "project_access_token"
+        },
+        "body": { "kind": "deleted" },
+        "created_at": "2026-08-04T10:09:43.405413Z",
+        "updated_at": "2026-08-04T10:09:43.411124Z",
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 2008381245,
+        "author": {
+          "display_name": "dc-core-bot",
+          "account_id": "712020:94072633-6f6e-4364-9f08-8c013269bb9f",
+          "uuid": "{ab0b7204-a3d4-4280-bbc2-2ee0d9131892}",
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "project_access_token"
+        },
+        "body": { "kind": "deleted" },
+        "created_at": "2026-08-04T13:20:03.874887Z",
+        "updated_at": "2026-08-04T13:20:03.881783Z",
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 2008409949,
+        "author": {
+          "display_name": "dc-core-bot",
+          "account_id": "712020:94072633-6f6e-4364-9f08-8c013269bb9f",
+          "uuid": "{ab0b7204-a3d4-4280-bbc2-2ee0d9131892}",
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "project_access_token"
+        },
+        "body": {
+          "kind": "markdown",
+          "text": "\n#### ⚠️ Visual Regression Results - AUI\nThe changes in this pull request have caused some visual regression test changes.\nPlease check the report to verify whether these changes are intentional: https://statlas.prod.atl-paas.net/atlassian-visual-regression-processor/git-bitbucket-org-atlassian-aui-visual-regression-git/AUI/issue-release-9-12-x-DCA11Y-3520-explicit-outline-color-focus/report.html\n\n\n🟡 Changed stories: **1**"
+        },
+        "created_at": "2026-08-05T06:05:30.161895Z",
+        "updated_at": "2026-08-05T06:05:30.170541Z",
+        "pending": false,
+        "replies": [
+          {
+            "id": 2008409989,
+            "author": {
+              "display_name": "Filip Nowakowski",
+              "account_id": "712020:7a8f6896-3e7a-4568-9655-498e1d900587",
+              "uuid": "{b42d7a4b-e7ad-4849-bc59-600c8129b033}",
+              "nickname": "Filip Nowakowski",
+              "kind": "human"
+            },
+            "body": { "kind": "markdown", "text": "flake pixel shift" },
+            "created_at": "2026-08-05T06:06:37.746821Z",
+            "updated_at": "2026-08-05T06:06:37.754972Z",
+            "pending": false,
+            "replies": []
+          }
+        ]
+      }
+    }
+  ],
+  "file_feedback": [
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": "tests/a11y-unit-tests/package.json",
+        "position": {
+          "kind": "updated",
+          "lines": { "first": 12, "last": 12 }
+        }
+      },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 2008381574,
+        "author": {
+          "display_name": "Filip Nowakowski",
+          "account_id": "712020:7a8f6896-3e7a-4568-9655-498e1d900587",
+          "uuid": "{b42d7a4b-e7ad-4849-bc59-600c8129b033}",
+          "nickname": "Filip Nowakowski",
+          "kind": "human"
+        },
+        "body": {
+          "kind": "markdown",
+          "text": "update once a11y-runner stable version is released"
+        },
+        "created_at": "2026-08-04T13:40:17.942754Z",
+        "updated_at": "2026-08-04T13:40:17.944848Z",
+        "pending": false,
+        "replies": []
+      }
+    }
+  ]
+}

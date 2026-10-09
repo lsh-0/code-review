@@ -1,0 +1,18 @@
+error duplicate_comment_id: comment identifier 10 appears more than once; the later one is dropped
+error inline_without_path: comment 6 has an inline anchor with no path
+error reply_cycle: comment 8 is part of a reply cycle; promoted to a thread root to break it
+error unparseable_timestamp: comment 16 created_on: not RFC 3339: expected a character in: '0' '1' '2' '3' '4' '5' '6' '7' '8'
+warning comment_count_mismatch: 27 comments retrieved less 3 without a body is 24, but the pull request reports 99
+warning deleted_with_body: comment 21 is marked deleted but carries body text
+warning inline_span_inverted: comment 5 on d.go: line range start 30 is after its end 20
+warning live_comment_empty_body: comment 22 is not marked deleted but has no body
+warning orphan_reply: reply 7 names parent 999, which is not in the fetched set; promoted to a thread root
+warning reply_anchor_conflict: reply 25 anchors to z.go but its parent does not
+warning reply_precedes_parent: reply 18 was created before its parent 17
+warning reply_precedes_parent: reply 18 was created before its parent 17
+warning resolution_detail_missing: comment 13 is resolved but the payload carried no detail; the request omitted fields=+values.resolution.*
+warning resolution_detail_missing: thread rooted at comment 13 is resolved but carries no detail; the comments request omitted fields=+values.resolution.*
+warning resolution_on_reply: comment 15 is a reply yet carries a resolution
+warning unknown_author_type: author "Martian" reported type "martian", which is neither user nor app_user
+warning unknown_pull_request_state: pull request state "ARCHIVED" is outside the known set
+debug deleted_comments_present: 3 of 27 comments have no body

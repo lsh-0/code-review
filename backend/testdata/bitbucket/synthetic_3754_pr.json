@@ -1,0 +1,86 @@
+{
+ "type": "pullrequest",
+ "id": 3754,
+ "title": "Synthetic review with deep threads",
+ "description": "A hand-built review for tests: deep reply chains, resolved threads and automated feedback.",
+ "state": "OPEN",
+ "draft": false,
+ "author": {
+  "display_name": "Author One",
+  "type": "user",
+  "nickname": "author.one",
+  "uuid": "{00000000-0000-4000-8000-000000000903}",
+  "account_id": "000000:00000000-0000-4000-8000-000000000903"
+ },
+ "created_on": "2026-08-04T07:00:00.000000+00:00",
+ "updated_on": "2026-08-05T10:00:00.000000+00:00",
+ "source": {
+  "branch": {
+   "name": "feature/deep-threads"
+  },
+  "commit": {
+   "hash": "0123456789ab"
+  }
+ },
+ "destination": {
+  "branch": {
+   "name": "main"
+  },
+  "commit": {
+   "hash": "ba9876543210"
+  }
+ },
+ "participants": [
+  {
+   "user": {
+    "display_name": "Reviewer One",
+    "type": "user",
+    "nickname": "reviewer.one",
+    "uuid": "{00000000-0000-4000-8000-000000000901}",
+    "account_id": "000000:00000000-0000-4000-8000-000000000901"
+   },
+   "role": "REVIEWER",
+   "approved": true
+  },
+  {
+   "user": {
+    "display_name": "Reviewer Two",
+    "type": "user",
+    "nickname": "reviewer.two",
+    "uuid": "{00000000-0000-4000-8000-000000000902}",
+    "account_id": "000000:00000000-0000-4000-8000-000000000902"
+   },
+   "role": "REVIEWER",
+   "approved": false
+  },
+  {
+   "user": {
+    "display_name": "review-bot",
+    "type": "app_user",
+    "kind": "workspace_access_token",
+    "uuid": "{00000000-0000-4000-8000-000000000900}",
+    "account_id": "000000:00000000-0000-4000-8000-000000000900"
+   },
+   "role": "PARTICIPANT",
+   "approved": false
+  },
+  {
+   "user": {
+    "display_name": "Author One",
+    "type": "user",
+    "nickname": "author.one",
+    "uuid": "{00000000-0000-4000-8000-000000000903}",
+    "account_id": "000000:00000000-0000-4000-8000-000000000903"
+   },
+   "role": "PARTICIPANT",
+   "approved": false
+  }
+ ],
+ "comment_count": 24,
+ "task_count": 0,
+ "links": {
+  "html": {
+   "href": "https://bitbucket.org/example-org/example-platform/pull-requests/3754"
+  }
+ }
+}

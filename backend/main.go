@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -592,6 +594,46 @@ func (a *App) ImportForeignReview() (string, error) {
 		return "", err
 	}
 
+	return marshalImportResult(ImportResult{Source: report.Source, Lines: report.Lines()})
+}
+
+// retrieve the feedback on a hosted pull request and merge it into the review.
+//
+// An empty `url` finds the open pull request whose source branch is the review's,
+// through the repository's `origin` remote. Otherwise `url` names the pull request.
+// Credentials come from the environment the GUI was started in. Runs the same
+// retrieval, normalisation, schema check and merge as the CLI's `fetch`, and returns
+// the report in the shape an import returns. Any failure returns an error before
+// anything is written, so the review is unchanged.
+//
+// Progress is logged to stderr at INFO. The request is bound to the GUI's context,
+// so closing the window cancels a fetch in flight.
+func (a *App) FetchForeignReview(url string) (string, error) {
+	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	target := fetchTarget{url: strings.TrimSpace(url), repoPath: a.repoPath, sourceBranch: a.review.SourceBranch}
+
+	result, err := fetchForeignDocument(a.ctx, currentFetchEnvironment(), target, log)
+	if err != nil {
+		return "", err
+	}
+
+	blobs := a.importBlobs()
+	paths := make([]string, 0, len(blobs))
+	for path := range blobs {
+		paths = append(paths, path)
+	}
+	report := importForeignReview(
+		a.review,
+		result.doc,
+		a.reanchorCorpus(paths, blobs),
+		blobs,
+		time.Now().UTC().Format(time.RFC3339),
+	)
+	report = fetchReport(report, result, a.review.SourceBranch)
+
+	if err := a.persist(); err != nil {
+		return "", err
+	}
 	return marshalImportResult(ImportResult{Source: report.Source, Lines: report.Lines()})
 }
 

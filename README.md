@@ -56,6 +56,36 @@ branch, and default branch) and writes only the review state, never the repo.
     code-review reply <id> <text>  # reply to a comment
     code-review comment <text>  # add a review-level (top-level) comment
     code-review unmark <file>   # drop a file's reviewed mark
+    code-review import <file>   # merge an import document from a file
+    code-review fetch [<url>]   # merge feedback from the branch's Bitbucket pull request
+    code-review schema          # print the import document JSON Schema
+
+### Fetching pull request feedback
+
+`code-review fetch` with no argument finds the open Bitbucket Cloud pull request
+whose source branch is the current branch, through the repository's `origin`
+remote. `code-review fetch <url>` fetches the pull request at that URL. Both
+merge its feedback into the review and print a report. `--debug` logs each
+request to stderr, with the credential redacted.
+
+Credentials are read from the environment only:
+
+| Variable | Meaning |
+| --- | --- |
+| `BITBUCKET_ACCESS_TOKEN` | A repository, project or workspace access token, sent as a bearer token. Takes precedence. |
+| `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN` | An Atlassian account API token with the `read:pullrequest:bitbucket` scope, with the account email, sent as HTTP Basic. |
+| neither | Anonymous, which is enough for a public repository. |
+
+The GUI reads the same variables from the environment it was started in.
+
+### Producing an import document
+
+A program producing review feedback for `code-review import` codes against the
+JSON Schema in `backend/feedback/import-document.v1.schema.json`, which
+`code-review schema` also prints. Every document is validated against it before
+import, and each violation is reported with its JSON Pointer. Properties the
+schema does not define are rejected. One rule is enforced outside the schema: in
+every span, `first` does not exceed `last`.
 
 ## Development
 

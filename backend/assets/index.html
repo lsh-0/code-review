@@ -30,7 +30,13 @@
                         </div>
                         <button id="refresh-btn">Refresh</button>
                         <button id="copy-prompt-btn" title="Copy an AI prompt that points at this review's state file">Copy AI prompt</button>
-                        <button id="import-btn" title="Import review feedback from a Bitbucket or GitHub pull request dump">Import feedback</button>
+                        <button id="import-btn" title="Import review feedback from an import document file">Import feedback</button>
+                        <div id="fetch-control">
+                            <input id="fetch-url" type="url" autocomplete="off" spellcheck="false"
+                                   placeholder="Pull request URL (blank: this branch)"
+                                   aria-label="Pull request URL to fetch feedback from">
+                            <button id="fetch-btn" title="Fetch review feedback from this branch's Bitbucket pull request, or from the pull request URL entered">Fetch feedback</button>
+                        </div>
                     </div>
                 </header>
                 <div id="file-group-control">

@@ -1,0 +1,589 @@
+{
+  "pull_request": {
+    "id": 77,
+    "title": "Synthetic anomalies",
+    "description": null,
+    "state": "ARCHIVED",
+    "draft": true,
+    "author": {
+      "display_name": "Author",
+      "account_id": "acc-Author",
+      "uuid": "{Author}",
+      "nickname": null,
+      "kind": "human"
+    },
+    "created_at": "2026-08-01T09:00:00.000000Z",
+    "updated_at": "2026-08-02T07:00:00.000000Z",
+    "source": { "branch": "feature/anomalies", "commit": "aaa111" },
+    "destination": { "branch": "master", "commit": null },
+    "participants": [
+      {
+        "user": {
+          "display_name": "Rev",
+          "account_id": "acc-Rev",
+          "uuid": "{Rev}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "role": "reviewer",
+        "approved": true
+      },
+      {
+        "user": {
+          "display_name": "Odd",
+          "account_id": "acc-Odd",
+          "uuid": "{Odd}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "role": "OBSERVER",
+        "approved": false
+      }
+    ],
+    "reported_comment_count": 99,
+    "reported_task_count": 1
+  },
+  "discussion": [
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 16,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 16" },
+        "created_at": "1970-01-01T00:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 6,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 6" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 7,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 7" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 8,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 8" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": [
+          {
+            "id": 9,
+            "author": {
+              "display_name": "Human",
+              "account_id": "acc-Human",
+              "uuid": "{Human}",
+              "nickname": null,
+              "kind": "human"
+            },
+            "body": { "kind": "markdown", "text": "body 9" },
+            "created_at": "2026-08-01T10:00:00.000000Z",
+            "updated_at": null,
+            "pending": false,
+            "replies": []
+          }
+        ]
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 10,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 10" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 11,
+        "author": {
+          "display_name": "Martian",
+          "account_id": "acc-Martian",
+          "uuid": "{Martian}",
+          "nickname": null,
+          "kind": "unknown",
+          "reported_type": "martian"
+        },
+        "body": { "kind": "markdown", "text": "body 11" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 12,
+        "author": {
+          "display_name": "Bot",
+          "account_id": null,
+          "uuid": null,
+          "nickname": null,
+          "kind": "application",
+          "application_kind": "workspace_access_token"
+        },
+        "body": { "kind": "markdown", "text": "body 12" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "resolved_without_detail" },
+      "root": {
+        "id": 13,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 13" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": {
+        "state": "resolved",
+        "by": {
+          "display_name": "Resolver",
+          "account_id": "acc-Resolver",
+          "uuid": "{Resolver}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "at": "2026-08-03T00:00:00.000000Z"
+      },
+      "root": {
+        "id": 14,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 14" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": [
+          {
+            "id": 15,
+            "author": {
+              "display_name": "Human",
+              "account_id": "acc-Human",
+              "uuid": "{Human}",
+              "nickname": null,
+              "kind": "human"
+            },
+            "body": { "kind": "markdown", "text": "body 15" },
+            "created_at": "2026-08-01T10:00:00.000000Z",
+            "updated_at": null,
+            "pending": false,
+            "replies": []
+          }
+        ]
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 19,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "deleted" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": [
+          {
+            "id": 20,
+            "author": {
+              "display_name": "Human",
+              "account_id": "acc-Human",
+              "uuid": "{Human}",
+              "nickname": null,
+              "kind": "human"
+            },
+            "body": { "kind": "markdown", "text": "body 20" },
+            "created_at": "2026-08-01T10:00:00.000000Z",
+            "updated_at": null,
+            "pending": false,
+            "replies": []
+          }
+        ]
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 21,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "deleted" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 22,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "deleted" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 23,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 23" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": true,
+        "replies": []
+      }
+    },
+    {
+      "location": { "kind": "pull_request" },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 17,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 17" },
+        "created_at": "2026-08-01T12:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": [
+          {
+            "id": 18,
+            "author": {
+              "display_name": "Human",
+              "account_id": "acc-Human",
+              "uuid": "{Human}",
+              "nickname": null,
+              "kind": "human"
+            },
+            "body": { "kind": "markdown", "text": "body 18" },
+            "created_at": "2026-08-01T11:00:00.000000Z",
+            "updated_at": null,
+            "pending": false,
+            "replies": []
+          }
+        ]
+      }
+    }
+  ],
+  "file_feedback": [
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": "a.go",
+        "position": {
+          "kind": "updated",
+          "lines": { "first": 12, "last": 12 }
+        }
+      },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 1,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 1" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": "a.go",
+        "position": {
+          "kind": "original",
+          "lines": { "first": 40, "last": 40 }
+        }
+      },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 2,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 2" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": "b.go",
+        "position": {
+          "kind": "unchanged",
+          "original_lines": { "first": 36, "last": 40 },
+          "updated_lines": { "first": 38, "last": 42 }
+        }
+      },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 3,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 3" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": "c.go",
+        "position": { "kind": "whole_file" }
+      },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 4,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 4" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": "d.go",
+        "position": {
+          "kind": "updated",
+          "lines": { "first": 20, "last": 20 }
+        }
+      },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 5,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 5" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": []
+      }
+    },
+    {
+      "location": {
+        "kind": "file_revision",
+        "path": "a.go",
+        "position": { "kind": "updated", "lines": { "first": 3, "last": 3 } }
+      },
+      "resolution": { "state": "unresolved" },
+      "root": {
+        "id": 24,
+        "author": {
+          "display_name": "Human",
+          "account_id": "acc-Human",
+          "uuid": "{Human}",
+          "nickname": null,
+          "kind": "human"
+        },
+        "body": { "kind": "markdown", "text": "body 24" },
+        "created_at": "2026-08-01T10:00:00.000000Z",
+        "updated_at": null,
+        "pending": false,
+        "replies": [
+          {
+            "id": 25,
+            "author": {
+              "display_name": "Human",
+              "account_id": "acc-Human",
+              "uuid": "{Human}",
+              "nickname": null,
+              "kind": "human"
+            },
+            "body": { "kind": "markdown", "text": "body 25" },
+            "created_at": "2026-08-01T10:00:00.000000Z",
+            "updated_at": null,
+            "pending": false,
+            "replies": []
+          },
+          {
+            "id": 26,
+            "author": {
+              "display_name": "Human",
+              "account_id": "acc-Human",
+              "uuid": "{Human}",
+              "nickname": null,
+              "kind": "human"
+            },
+            "body": { "kind": "markdown", "text": "body 26" },
+            "created_at": "2026-08-01T10:00:00.000000Z",
+            "updated_at": null,
+            "pending": false,
+            "replies": []
+          },
+          {
+            "id": 27,
+            "author": {
+              "display_name": "Human",
+              "account_id": "acc-Human",
+              "uuid": "{Human}",
+              "nickname": null,
+              "kind": "human"
+            },
+            "body": { "kind": "markdown", "text": "body 27" },
+            "created_at": "2026-08-01T10:00:00.000000Z",
+            "updated_at": null,
+            "pending": false,
+            "replies": []
+          }
+        ]
+      }
+    }
+  ]
+}

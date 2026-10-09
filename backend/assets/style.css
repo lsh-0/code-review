@@ -179,7 +179,8 @@ header {
 
 #refresh-btn,
 #copy-prompt-btn,
-#import-btn {
+#import-btn,
+#fetch-btn {
     margin-top: 0.5rem;
     padding: 0.3rem 0.8rem;
     background: var(--color-bg-secondary);
@@ -194,7 +195,8 @@ header {
 
 #refresh-btn:hover,
 #copy-prompt-btn:hover,
-#import-btn:hover {
+#import-btn:hover,
+#fetch-btn:hover:not(:disabled) {
     background: var(--color-bg-primary);
 }
 
@@ -202,7 +204,8 @@ header {
    the basic indent-then-outdent every button should have. */
 #refresh-btn:active,
 #copy-prompt-btn:active,
-#import-btn:active {
+#import-btn:active,
+#fetch-btn:active:not(:disabled) {
     transform: translateY(1px);
 }
 
@@ -211,10 +214,39 @@ header {
    size or text change, so the surrounding navigation never shifts. */
 #refresh-btn.flash-success,
 #copy-prompt-btn.flash-success,
-#import-btn.flash-success {
+#import-btn.flash-success,
+#fetch-btn.flash-success {
     background: var(--color-status-active);
     color: white;
     transition: none;
+}
+
+/* the fetch URL field and its button sit on one line under the header buttons. */
+#fetch-control {
+    display: flex;
+    gap: 0.3rem;
+    margin-top: 0.5rem;
+}
+
+#fetch-control #fetch-btn {
+    margin-top: 0;
+    white-space: nowrap;
+}
+
+#fetch-btn:disabled {
+    cursor: progress;
+    opacity: 0.6;
+}
+
+#fetch-url {
+    flex: 1;
+    min-width: 0;
+    padding: 0.3rem 0.5rem;
+    background: var(--color-bg-secondary);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-size: 0.8rem;
 }
 
 #app {

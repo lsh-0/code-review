@@ -1,10 +1,13 @@
 package main
 
 import (
+	"code-review/feedback"
 	"code-review/model"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -28,11 +31,15 @@ import (
 // `repoPath` is carried for the one command that must place comments against the
 // current diff (`import`), which needs the repository to compute it. Commands that
 // only read or mutate the state file ignore it.
+//
+// `flags` holds the command's own parsed flags, for a command that declares any.
 type reviewContext struct {
 	review    *model.Review
 	statePath string
 	userName  string
 	repoPath  string
+	flags     *flag.FlagSet
+	errOut    io.Writer
 }
 
 // the placement inputs an import needs: each file's full content at the source
@@ -387,10 +394,79 @@ func cmdImport(ctx *reviewContext, out io.Writer, args []string) error {
 	return nil
 }
 
+// declares `fetch`'s flags.
+func fetchFlags(flags *flag.FlagSet) {
+	flags.Bool("debug", false, "log each request, with credentials redacted, and debug findings")
+}
+
+// fetch [<url>] — retrieve review feedback from a hosted pull request and merge it
+// into the review, as `import` merges a document from a file.
+//
+// With no argument it finds the open pull request whose source branch is the
+// review's, through the repository's `origin` remote. With a URL it fetches that
+// pull request. Credentials come from the environment only.
+//
+// The only command with network access. Retrieval, normalisation and the schema
+// check all complete before anything is written, so a failure leaves the state file
+// untouched. Progress is logged to stderr at INFO, and at DEBUG with `--debug`. The
+// report goes to stdout.
+func cmdFetch(ctx *reviewContext, out io.Writer, args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("usage: code-review fetch [<url>]")
+	}
+	target := fetchTarget{repoPath: ctx.repoPath, sourceBranch: ctx.review.SourceBranch}
+	if len(args) == 1 {
+		target.url = args[0]
+	}
+
+	level := slog.LevelInfo
+	if debug, err := ctx.flags.GetBool("debug"); err == nil && debug {
+		level = slog.LevelDebug
+	}
+	errOut := ctx.errOut
+	if errOut == nil {
+		errOut = io.Discard
+	}
+	log := slog.New(slog.NewTextHandler(errOut, &slog.HandlerOptions{Level: level}))
+
+	result, err := fetchForeignDocument(context.Background(), currentFetchEnvironment(), target, log)
+	if err != nil {
+		return err
+	}
+
+	diffLines, blobs, err := importPlacement(ctx)
+	if err != nil {
+		return err
+	}
+	report := importForeignReview(ctx.review, result.doc, diffLines, blobs, time.Now().UTC().Format(time.RFC3339))
+	report = fetchReport(report, result, ctx.review.SourceBranch)
+
+	if err := SaveReview(ctx.statePath, ctx.review); err != nil {
+		return err
+	}
+	for _, line := range report.Lines() {
+		if _, err := fmt.Fprintln(out, line); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // instructions — print the embedded agent contract verbatim. Read-only and does
 // not resolve a review, so it works outside a repository.
 func cmdInstructions(out io.Writer, args []string) error {
 	_, err := fmt.Fprint(out, instructionsText)
+	return err
+}
+
+// schema — print the import document schema, the contract a program producing
+// feedback for `import` codes against. Read-only, needs no repository, and issues no
+// network request: the schema is embedded in the binary.
+func cmdSchema(out io.Writer, args []string) error {
+	if err := requireArgs("schema", args, 0, ""); err != nil {
+		return err
+	}
+	_, err := out.Write(feedback.Schema())
 	return err
 }
 
@@ -450,9 +526,12 @@ const (
 // matching `needs`), a one-line usage summary for the help listing, and the
 // resolution it requires. The split-typed handlers keep each command's signature
 // honest about what it receives rather than passing a half-built context.
+//
+// `flags`, when set, declares the command's own flags on the set `runCLI` parses.
 type command struct {
 	needs         needs
 	summary       string
+	flags         func(*flag.FlagSet)
 	runReview     func(ctx *reviewContext, out io.Writer, args []string) error
 	runTarget     func(target *reviewTarget, out io.Writer, args []string) error
 	runStandalone func(out io.Writer, args []string) error
@@ -471,7 +550,9 @@ var commands = map[string]command{
 	"comment":      {needs: needsReview, summary: "comment <text> — add a review-level comment", runReview: cmdComment},
 	"unmark":       {needs: needsReview, summary: "unmark <file> — drop a file's reviewed mark", runReview: cmdUnmark},
 	"import":       {needs: needsReview, summary: "import <file> — merge external review feedback", runReview: cmdImport},
+	"fetch":        {needs: needsReview, summary: "fetch [<url>] — merge feedback from the branch's pull request", flags: fetchFlags, runReview: cmdFetch},
 	"instructions": {needs: needsNothing, summary: "print the agent contract", runStandalone: cmdInstructions},
+	"schema":       {needs: needsNothing, summary: "print the import document JSON Schema", runStandalone: cmdSchema},
 }
 
 // reviewTarget identifies the review for the current directory and branch
@@ -597,6 +678,9 @@ func runCLI(args []string, out io.Writer, errOut io.Writer) int {
 	// POSIX-style, leaving the positional arguments for the handler.
 	flags := flag.NewFlagSet(name, flag.ContinueOnError)
 	flags.SetOutput(errOut)
+	if cmd.flags != nil {
+		cmd.flags(flags)
+	}
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -620,6 +704,8 @@ func runCLI(args []string, out io.Writer, errOut io.Writer) int {
 			fmt.Fprintf(errOut, "%v\n", err)
 			return 1
 		}
+		ctx.flags = flags
+		ctx.errOut = errOut
 		runErr = cmd.runReview(ctx, out, flags.Args())
 	}
 

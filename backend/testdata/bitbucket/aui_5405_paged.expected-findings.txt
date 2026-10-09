@@ -1,0 +1,1 @@
+debug deleted_comments_present: 2 of 5 comments have no body

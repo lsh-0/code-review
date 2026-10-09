@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -325,4 +326,22 @@ func findInString(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestGetRemoteURL(t *testing.T) {
+	tmp_dir := setupTestRepo(t)
+
+	if _, err := GetRemoteURL(tmp_dir, "origin"); err == nil || !strings.Contains(err.Error(), `"origin"`) {
+		t.Errorf("expected an error naming the missing remote, got %v", err)
+	}
+
+	expected := "git@bitbucket.org:acme/router.git"
+	if out, err := exec.Command("git", "-C", tmp_dir, "remote", "add", "origin", expected).CombinedOutput(); err != nil {
+		t.Fatalf("git remote add: %v: %s", err, out)
+	}
+
+	actual, err := GetRemoteURL(tmp_dir, "origin")
+	if err != nil || actual != expected {
+		t.Errorf("got %q, %v; want %q", actual, err, expected)
+	}
 }

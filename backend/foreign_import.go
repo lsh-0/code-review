@@ -1,6 +1,7 @@
 package main
 
 import (
+	"code-review/feedback"
 	"code-review/model"
 	"fmt"
 	"os"
@@ -43,6 +44,9 @@ type mappedComment struct {
 //
 // Both path lists name the file rather than only counting it, because a count alone
 // does not tell the reviewer where to look for a comment that arrived untethered.
+//
+// `Findings` and `BranchMismatch` are set by a fetch only: a file import reports
+// neither.
 type importReport struct {
 	Source           string
 	Imported         int
@@ -53,6 +57,15 @@ type importReport struct {
 	UnplaceablePaths []string
 	UnmatchedPaths   []string
 	MatchedPaths     int
+	Findings         []feedback.Finding
+	BranchMismatch   *branchMismatch
+}
+
+// a fetched pull request whose source branch is not the branch under review. A URL
+// can name such a pull request deliberately, so the merge still proceeds.
+type branchMismatch struct {
+	PullRequest string
+	Review      string
 }
 
 // report whether the document commented on files but none of them appear in the
@@ -79,6 +92,13 @@ func (r importReport) Lines() []string {
 	if r.whollyUnmatched() {
 		lines = append(lines, "no path in this document matches the current diff: it may belong to another branch")
 	}
+	if r.BranchMismatch != nil {
+		lines = append(lines, fmt.Sprintf("the pull request's source branch is %q but the review is of %q",
+			r.BranchMismatch.PullRequest, r.BranchMismatch.Review))
+	}
+	for _, finding := range r.Findings {
+		lines = append(lines, finding.String())
+	}
 	return lines
 }
 
@@ -86,14 +106,14 @@ func (r importReport) Lines() []string {
 //
 // Derived from the document rather than the file it was read from, so re-importing
 // the same pull request from a renamed file still matches its existing comments.
-func foreignSourceID(doc *foreignDocument) string {
+func foreignSourceID(doc *feedback.Document) string {
 	return fmt.Sprintf("%s:%d", foreignSourcePrefix, doc.PullRequest.ID)
 }
 
 // the source registry record for a document, stamped with `importedAt`. The pull
 // request's title is recorded in its own field as well as in the display label, so
 // reading it does not mean parsing the label.
-func foreignSource(doc *foreignDocument, importedAt string) model.Source {
+func foreignSource(doc *feedback.Document, importedAt string) model.Source {
 	title := strings.TrimSpace(doc.PullRequest.Title)
 	label := fmt.Sprintf("Bitbucket #%d", doc.PullRequest.ID)
 	if title != "" {
@@ -113,12 +133,12 @@ func foreignSource(doc *foreignDocument, importedAt string) model.Source {
 // the author to attribute an imported comment to. The display name is always
 // present in the format; an automated author is marked so a reviewer can tell
 // machine feedback from a person's without matching names against a bot list.
-func foreignAuthorName(author foreignAuthor) string {
+func foreignAuthorName(author feedback.Author) string {
 	name := strings.TrimSpace(author.DisplayName)
 	if name == "" {
 		name = "unknown"
 	}
-	if author.Kind == authorApplication {
+	if author.Kind == feedback.AuthorApplication {
 		return name + " (bot)"
 	}
 	return name
@@ -131,11 +151,11 @@ func foreignAuthorName(author foreignAuthor) string {
 // `original` position addresses lines the change removed and a `whole_file`
 // position addresses no line at all: neither has a new-side placement, so both
 // report false and their comments import untethered.
-func positionNewLine(position foreignPosition) (int, bool) {
+func positionNewLine(position feedback.Position) (int, bool) {
 	switch position.Kind {
-	case positionUpdated:
+	case feedback.PositionUpdated:
 		return position.Lines.First, true
-	case positionUnchanged:
+	case feedback.PositionUnchanged:
 		return position.UpdatedLines.First, true
 	default:
 		return 0, false
@@ -159,7 +179,7 @@ func positionNewLine(position foreignPosition) (int, bool) {
 // `AddReply` already applies to a local reply-to-a-reply. Order and per-comment
 // author survive; the reply-to-a-reply relationship does not.
 func mapForeignDocument(
-	doc *foreignDocument,
+	doc *feedback.Document,
 	diffLines map[string][]model.DiffLineRef,
 	blobs map[string]string,
 ) ([]mappedComment, importReport) {
@@ -171,14 +191,14 @@ func mapForeignDocument(
 	matched := make(map[string]bool)
 	unplaceable := make(map[string]bool)
 
-	for _, thread := range doc.threads() {
+	for _, thread := range doc.Threads() {
 		if skipForeignComment(thread.Root) {
 			report.Skipped += countForeignComments(thread.Root)
 			continue
 		}
 
 		filePath := ""
-		if thread.Location.Kind == locationFileRevision {
+		if thread.Location.Kind == feedback.LocationFileRevision {
 			filePath = thread.Location.Path
 			if _, present := diffLines[filePath]; present {
 				matched[filePath] = true
@@ -226,7 +246,7 @@ func mapForeignDocument(
 // behaves as an overall-feedback comment. A file-anchored thread gets a good anchor
 // when its line is in `lines`, and an adrift one otherwise.
 func foreignRootComment(
-	thread foreignThread,
+	thread feedback.Thread,
 	sourceID string,
 	lines []model.DiffLineRef,
 	blob string,
@@ -239,7 +259,7 @@ func foreignRootComment(
 		Origin:  &model.Origin{Source: sourceID, ForeignID: strconv.Itoa(thread.Root.ID)},
 	}
 
-	if thread.Location.Kind != locationFileRevision {
+	if thread.Location.Kind != feedback.LocationFileRevision {
 		return comment
 	}
 
@@ -257,9 +277,9 @@ func foreignRootComment(
 // the local status an imported thread starts at. A thread already resolved at the
 // source starts resolved, so a reviewer is not asked to work through feedback its
 // author has already closed. Everything else starts active.
-func foreignStatus(resolution foreignResolution) model.CommentStatus {
+func foreignStatus(resolution feedback.Resolution) model.CommentStatus {
 	switch resolution.State {
-	case resolutionResolved, resolutionResolvedWithoutInfo:
+	case feedback.ResolutionResolved, feedback.ResolutionResolvedWithoutInfo:
 		return model.CommentStatusResolved
 	default:
 		return model.CommentStatusActive
@@ -272,12 +292,12 @@ func foreignStatus(resolution foreignResolution) model.CommentStatus {
 //
 // The walk is depth-first, so a reply that answered another reply keeps its place
 // in the reading order even though it is re-rooted.
-func foreignReplies(root foreignComment, rootID string, sourceID string) ([]*model.Comment, int) {
+func foreignReplies(root feedback.Comment, rootID string, sourceID string) ([]*model.Comment, int) {
 	replies := make([]*model.Comment, 0)
 	skipped := 0
 
-	var walk func(comments []foreignComment)
-	walk = func(comments []foreignComment) {
+	var walk func(comments []feedback.Comment)
+	walk = func(comments []feedback.Comment) {
 		for _, comment := range comments {
 			if skipForeignComment(comment) {
 				skipped += countForeignComments(comment)
@@ -301,13 +321,13 @@ func foreignReplies(root foreignComment, rootID string, sourceID string) ([]*mod
 
 // report whether a source comment carries nothing worth importing: a deleted body
 // has no text, and a pending comment is an unpublished draft.
-func skipForeignComment(comment foreignComment) bool {
-	return comment.Body.Kind == bodyDeleted || comment.Pending
+func skipForeignComment(comment feedback.Comment) bool {
+	return comment.Body.Kind == feedback.BodyDeleted || comment.Pending
 }
 
 // the number of comments in a subtree, counting the root and every descendant. Used
 // to report a skipped thread by the comments it cost, not by one.
-func countForeignComments(comment foreignComment) int {
+func countForeignComments(comment feedback.Comment) int {
 	total := 1
 	for _, reply := range comment.Replies {
 		total += countForeignComments(reply)
@@ -454,12 +474,12 @@ func hasSourceComment(comments []*model.Comment, sourceID string) bool {
 // Reads the file without modifying it. Returns an error naming the path when it
 // cannot be read, and the decoder's error when the contents are not a valid
 // document; the caller writes nothing in either case.
-func loadForeignDocument(path string) (*foreignDocument, error) {
+func loadForeignDocument(path string) (*feedback.Document, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read %s: %w", path, err)
 	}
-	doc, err := decodeForeignDocument(data)
+	doc, err := feedback.Decode(data)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -473,7 +493,7 @@ func loadForeignDocument(path string) (*foreignDocument, error) {
 // caller persists the review; this leaves it in memory.
 func importForeignReview(
 	review *model.Review,
-	doc *foreignDocument,
+	doc *feedback.Document,
 	diffLines map[string][]model.DiffLineRef,
 	blobs map[string]string,
 	importedAt string,

@@ -1,0 +1,57 @@
+{
+ "id": 77,
+ "title": "Synthetic anomalies",
+ "description": "",
+ "state": "ARCHIVED",
+ "draft": true,
+ "author": {
+  "display_name": "Author",
+  "type": "user",
+  "uuid": "{Author}",
+  "account_id": "acc-Author"
+ },
+ "created_on": "2026-08-01T09:00:00.000000+00:00",
+ "updated_on": "2026-08-02T09:00:00+02:00",
+ "source": {
+  "branch": {
+   "name": "feature/anomalies"
+  },
+  "commit": {
+   "hash": "aaa111"
+  }
+ },
+ "destination": {
+  "branch": {
+   "name": "master"
+  }
+ },
+ "participants": [
+  {
+   "user": {
+    "display_name": "Rev",
+    "type": "user",
+    "uuid": "{Rev}",
+    "account_id": "acc-Rev"
+   },
+   "role": "REVIEWER",
+   "approved": true
+  },
+  {
+   "user": {
+    "display_name": "Odd",
+    "type": "user",
+    "uuid": "{Odd}",
+    "account_id": "acc-Odd"
+   },
+   "role": "OBSERVER",
+   "approved": false
+  }
+ ],
+ "comment_count": 99,
+ "task_count": 1,
+ "links": {
+  "html": {
+   "href": "https://bitbucket.org/x/y/pull-requests/77"
+  }
+ }
+}

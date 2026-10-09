@@ -468,8 +468,8 @@ func TestNoCommandEditsOrDeletesAComment(t *testing.T) {
 // which is the check that keeps the mutation surface conservative as the CLI grows.
 func TestCommandSetIsPinned(t *testing.T) {
 	expected := []string{
-		"comment", "import", "instructions", "list", "reactivate",
-		"reply", "resolve", "show", "start", "status", "unmark",
+		"comment", "fetch", "import", "instructions", "list", "reactivate",
+		"reply", "resolve", "schema", "show", "start", "status", "unmark",
 	}
 	actual := commandNames()
 	if !equalStringSlices(actual, expected) {
@@ -478,14 +478,23 @@ func TestCommandSetIsPinned(t *testing.T) {
 }
 
 // the import reads a file and nothing else. Asserted structurally, over the source of
-// the two files that make up the import path: a future `net/http` or credential read
+// the files that make up the import path: the import mapping and the
+// provider-independent `feedback` package. A future `net/http` or credential read
 // added there fails here rather than reaching a user's machine.
 func TestImportPathHasNoNetworkOrCredentialAccess(t *testing.T) {
 	forbidden := []string{
 		"net/http", "\"net\"", "http.Get", "http.Post", "http.Client",
 		"os.Getenv", "netrc", "Authorization",
 	}
-	for _, name := range []string{"foreign_format.go", "foreign_import.go"} {
+	names, err := filepath.Glob("feedback/*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	names = append(names, "foreign_import.go")
+	for _, name := range names {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
 		source, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)

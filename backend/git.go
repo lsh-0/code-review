@@ -77,3 +77,14 @@ func GetUserName(repoPath string) (string, error) {
 	}
 	return strings.TrimSpace(string(output)), nil
 }
+
+// read the URL of the remote `name`, such as `origin`, via `git remote get-url`.
+// Read-only. Returns an error naming the remote when it is not configured.
+func GetRemoteURL(repoPath, name string) (string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "remote", "get-url", name)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("no %q remote is configured", name)
+	}
+	return strings.TrimSpace(string(output)), nil
+}

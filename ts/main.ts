@@ -42,6 +42,7 @@ import {
   renderWorkingTreeBanner,
 } from "./render/view.ts";
 import { renderOverview } from "./render/overview.ts";
+import { triggerFetch } from "./render/fetch.ts";
 
 const zoomMin = 0.5;
 const zoomMax = 3.0;
@@ -356,6 +357,7 @@ function setupEventHandlers(): void {
     () => void copyStatePrompt(),
   );
   byId("import-btn")?.addEventListener("click", () => void triggerImport());
+  setupFetchControl();
   byId("import-banner-dismiss")?.addEventListener("click", () => {
     byId("import-banner")?.classList.add("hidden");
   });
@@ -488,13 +490,45 @@ async function triggerImport(): Promise<void> {
     return;
   }
 
+  await reloadAfterImport();
+
+  flashSuccess(byId("import-btn"));
+  showImportReport(result.lines);
+}
+
+// wire the fetch button and its URL field. Enter in the field fetches, as the
+// button does.
+function setupFetchControl(): void {
+  const button = byId("fetch-btn") as HTMLButtonElement | null;
+  const input = byId("fetch-url") as HTMLInputElement | null;
+  if (!button || !input) {
+    return;
+  }
+  const deps = {
+    fetch: api.fetchForeignReview,
+    reload: reloadAfterImport,
+    report: showImportReport,
+    flash: flashSuccess,
+  };
+  button.addEventListener(
+    "click",
+    () => void triggerFetch(button, input, deps),
+  );
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      void triggerFetch(button, input, deps);
+    }
+  });
+}
+
+// reload review state and re-render every surface after feedback arrives, so the
+// new feedback and its source toggle appear without a manual refresh.
+async function reloadAfterImport(): Promise<void> {
   await loadReviewInfo();
   await loadCommentedFiles();
   renderSourceToggles();
   await reRenderForVisibility();
-
-  flashSuccess(byId("import-btn"));
-  showImportReport(result.lines);
 }
 
 // show an import's report in its own banner, dismissed by the reviewer.

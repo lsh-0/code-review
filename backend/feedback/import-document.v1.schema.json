@@ -1,0 +1,605 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lsh-0/code-review/schemas/import-document.v1.schema.json",
+  "title": "code-review import document, version 1",
+  "description": "Review feedback from a hosted pull request, or any source normalised onto the same encoding, for `code-review import <file>`. Provider-independent. One rule is not expressible here and is enforced by the importer: in every span, `first` does not exceed `last`.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "description": "The version of this encoding. Absent reads as 1.",
+      "const": 1
+    },
+    "pull_request": {
+      "$ref": "#/$defs/pull_request"
+    },
+    "discussion": {
+      "description": "Threads attached to no file. Each thread is classified by its own `location`, so a file-anchored thread here is still treated as file-anchored.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/thread"
+      }
+    },
+    "file_feedback": {
+      "description": "Threads anchored to a file. Each thread is classified by its own `location`.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/thread"
+      }
+    }
+  },
+  "required": [
+    "pull_request",
+    "discussion",
+    "file_feedback"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "non_blank": {
+      "description": "A string with at least one character other than space, tab, line feed, carriage return and form feed.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "[^ \\t\\n\\r\\f]"
+    },
+    "nullable_string": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timestamp": {
+      "description": "An RFC 3339 date-time.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "nullable_timestamp": {
+      "description": "An RFC 3339 date-time, or null when unknown.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "span": {
+      "description": "A closed range of line numbers, `first` through `last` inclusive. `first` does not exceed `last`: the importer rejects a span that violates this.",
+      "type": "object",
+      "properties": {
+        "first": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "last": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "first",
+        "last"
+      ],
+      "additionalProperties": false
+    },
+    "position": {
+      "description": "Which lines a comment addresses. `whole_file`: the file, no line. `original`: old-side lines the change removed. `updated`: new-side lines the change added. `unchanged`: a context line present on both sides.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "whole_file",
+            "original",
+            "updated",
+            "unchanged"
+          ]
+        },
+        "lines": {
+          "$ref": "#/$defs/span"
+        },
+        "original_lines": {
+          "$ref": "#/$defs/span"
+        },
+        "updated_lines": {
+          "$ref": "#/$defs/span"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "whole_file"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "lines": false,
+              "original_lines": false,
+              "updated_lines": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "original",
+                  "updated"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "lines"
+            ],
+            "properties": {
+              "original_lines": false,
+              "updated_lines": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "unchanged"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "original_lines",
+              "updated_lines"
+            ],
+            "properties": {
+              "lines": false
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "location": {
+      "description": "What a thread is attached to. `pull_request`: review-level discussion. `file_revision`: a file, at a position.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "pull_request",
+            "file_revision"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/non_blank"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "pull_request"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "path": false,
+              "position": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "file_revision"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "path",
+              "position"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "body": {
+      "description": "A comment's text, or the fact that there is none. A `deleted` body carries no text. A `markdown` body's text is never blank.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "deleted",
+            "markdown"
+          ]
+        },
+        "text": {
+          "$ref": "#/$defs/non_blank"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "deleted"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "text": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "markdown"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "text"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "author": {
+      "description": "Who wrote a comment. `kind` comes from the source's own discriminator, never from matching names against a list of bots. `application` carries `application_kind`. `unknown` carries the discriminator the source reported in `reported_type`.",
+      "type": "object",
+      "properties": {
+        "display_name": {
+          "$ref": "#/$defs/non_blank"
+        },
+        "account_id": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "uuid": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "nickname": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "kind": {
+          "enum": [
+            "human",
+            "application",
+            "unknown"
+          ]
+        },
+        "application_kind": {
+          "type": "string"
+        },
+        "reported_type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "display_name",
+        "kind"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "human"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "application_kind": false,
+              "reported_type": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "application"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "application_kind"
+            ],
+            "properties": {
+              "reported_type": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "unknown"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "reported_type"
+            ],
+            "properties": {
+              "application_kind": false
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "resolution": {
+      "description": "Whether a thread has been dealt with at the source. `resolved` carries by whom and when. `resolved_without_detail` is resolved with that detail withheld by the source.",
+      "type": "object",
+      "properties": {
+        "state": {
+          "enum": [
+            "unresolved",
+            "resolved",
+            "resolved_without_detail"
+          ]
+        },
+        "by": {
+          "$ref": "#/$defs/author"
+        },
+        "at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unresolved",
+                  "resolved_without_detail"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "by": false,
+              "at": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "resolved"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "by",
+              "at"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "comment": {
+      "description": "One comment and its replies, nested to any depth. Replies are ordered by creation time, then by `id`. A `pending` comment is an unpublished draft.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "author": {
+          "$ref": "#/$defs/author"
+        },
+        "body": {
+          "$ref": "#/$defs/body"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "pending": {
+          "type": "boolean"
+        },
+        "replies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/comment"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "author",
+        "body",
+        "created_at"
+      ],
+      "additionalProperties": false
+    },
+    "thread": {
+      "description": "Where a thread sits, whether it is resolved, and its root comment. A reply never resolves separately.",
+      "type": "object",
+      "properties": {
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "resolution": {
+          "$ref": "#/$defs/resolution"
+        },
+        "root": {
+          "$ref": "#/$defs/comment"
+        }
+      },
+      "required": [
+        "location",
+        "resolution",
+        "root"
+      ],
+      "additionalProperties": false
+    },
+    "revision": {
+      "description": "A branch and the commit it pointed at, or null when unknown.",
+      "type": "object",
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "commit": {
+          "$ref": "#/$defs/nullable_string"
+        }
+      },
+      "required": [
+        "branch"
+      ],
+      "additionalProperties": false
+    },
+    "participant": {
+      "type": "object",
+      "properties": {
+        "user": {
+          "$ref": "#/$defs/author"
+        },
+        "role": {
+          "type": "string"
+        },
+        "approved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "user",
+        "role",
+        "approved"
+      ],
+      "additionalProperties": false
+    },
+    "pull_request": {
+      "description": "The pull request the feedback was raised on. `state` and participant `role` are free text, so a value outside a provider's known set survives. `reported_comment_count` is the count the source reported, excluding deleted comments.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "draft": {
+          "type": "boolean"
+        },
+        "author": {
+          "$ref": "#/$defs/author"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "source": {
+          "$ref": "#/$defs/revision"
+        },
+        "destination": {
+          "$ref": "#/$defs/revision"
+        },
+        "participants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/participant"
+          }
+        },
+        "reported_comment_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reported_task_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "state",
+        "author",
+        "created_at",
+        "source",
+        "destination"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
